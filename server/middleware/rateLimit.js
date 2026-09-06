@@ -10,12 +10,13 @@ import { ApiError } from '../lib/errors.js';
 export function rateLimit({ windowMs = 60_000, max = 60, key = defaultKey, message } = {}) {
   const hits = new Map();
 
-  // Drop expired buckets so the map can't grow without bound.
-  const timer = setInterval(() => {
+  // Drop expired buckets so the map can't grow without bound. The timer is
+  // unref'd so it never holds the process open on its own.
+  const sweeper = setInterval(() => {
     const now = Date.now();
-    for (const [k, entry] of hits) if (entry.resetAt <= now) hits.delete(k);
-  }, windowMs).unref?.();
-  void timer;
+    for (const [key, entry] of hits) if (entry.resetAt <= now) hits.delete(key);
+  }, windowMs);
+  sweeper.unref?.();
 
   return (req, res, next) => {
     const id = key(req);

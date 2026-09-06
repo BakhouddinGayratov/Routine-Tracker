@@ -306,4 +306,3 @@ export function sparkline(values, { width = 120, height = 30, color = 'var(--acc
   );
 }
 
-export { parseISO };

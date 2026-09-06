@@ -9,12 +9,15 @@ import { requestNotificationPermission, notificationState } from '../reminders.j
 
 /** Profile, appearance, preferences, security, data and account deletion. */
 export function renderSettings(container, { navigate }) {
-  const user = state.user;
+  // Re-read the user on every render: saving a preference replaces the object
+  // in the store, and a stale closure would redraw the old values.
+  let user = state.user;
   let sessions = [];
 
   const sessionsSlot = el('div');
 
   const render = () => {
+    user = state.user;
     mount(container,
       el('div', { class: 'page-head' },
         el('h1', null, t('settings.title')),

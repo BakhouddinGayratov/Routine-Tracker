@@ -10,6 +10,7 @@
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
     "test": "node tests/api.test.js",
+    "test:ui": "node tests/ui.test.js",
     "seed": "node server/db/seed.js"
   },
   "dependencies": {
