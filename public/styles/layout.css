@@ -254,7 +254,11 @@
   .tabbar__item:hover { text-decoration: none; }
   .tabbar__item.is-active { color: var(--accent); background: var(--accent-soft); }
 
-  .grid--2, .grid--3, .grid--4, .grid--split { grid-template-columns: minmax(0, 1fr); }
+  .grid--2, .grid--3, .grid--split { grid-template-columns: minmax(0, 1fr); }
+  /* Four small tiles stacked one-per-screen is all scrolling and no overview. */
+  .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-3); }
+  .grid--4 .kpi { padding: var(--s-4); }
+  .grid--4 .kpi__value { font-size: var(--text-lg); }
 }
 
 @media (min-width: 761px) and (max-width: 1080px) {

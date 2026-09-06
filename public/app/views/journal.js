@@ -88,7 +88,7 @@ export function renderJournal(container, { date, navigate }) {
       pickerRow(t('journal.energy'), ENERGY, 'energy'),
 
       el('div', { class: 'field' },
-        el('label', { class: 'field__label', for: 'journal-body' }, t('journal.title')),
+        el('label', { class: 'field__label', for: 'journal-body' }, t('form.notes')),
         el('textarea', {
           class: 'textarea', id: 'journal-body', rows: '7',
           placeholder: t('journal.placeholder'),

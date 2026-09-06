@@ -60,7 +60,7 @@ export function renderSettings(container, { navigate }) {
           el('div', { style: { 'font-weight': '640' } }, user.name),
           el('div', { class: 'subtle', style: { 'font-size': 'var(--text-sm)' } }, user.email),
           el('div', { class: 'subtle', style: { 'font-size': 'var(--text-xs)' } },
-            `${t('form.startDate')}: ${formatDate(user.created_at.slice(0, 10), { locale: user.locale })}`),
+            `${t('settings.joined')}: ${formatDate(user.created_at.slice(0, 10), { locale: user.locale })}`),
         ),
       ),
 
