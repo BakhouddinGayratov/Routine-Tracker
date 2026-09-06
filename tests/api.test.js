@@ -244,9 +244,23 @@ await test('a perfect day produces a streak', async () => {
   assert.equal(r.body.streak.current >= 1, true);
 });
 
-await test('the heatmap returns one entry per day', async () => {
+await test('the heatmap starts at the first scheduled day, not the window edge', async () => {
   const r = await api('GET', '/api/stats/heatmap?days=60');
-  assert.equal(r.body.days.length, 60);
+  // Routines in this suite start yesterday, so the window is clamped to the
+  // eight-week floor rather than padded out to the requested 60 days.
+  assert.equal(r.body.to, today);
+  assert.equal(r.body.days.length, 56);
+  assert.equal(r.body.days.at(-1).date, today);
+  // Days before anything was scheduled carry no due count.
+  assert.equal(r.body.days[0].due, 0);
+});
+
+await test('the shell summary reports level, streak and today', async () => {
+  const r = await api('GET', '/api/stats/summary');
+  assert.equal(r.status, 200);
+  assert.ok(r.body.xp.level >= 1);
+  assert.equal(r.body.today.total > 0, true);
+  assert.equal(r.body.today.done + r.body.today.pending, r.body.today.total);
 });
 
 await test('achievements unlock and persist', async () => {

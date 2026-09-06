@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Routine Tracker — build the days you want</title>
+  <meta name="description" content="Plan your routines by the hour, tick them off as you go, and watch your streaks, stats and habits grow." />
+  <meta name="theme-color" content="#0b0d14" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/assets/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/assets/icon.svg" />
+  <link rel="stylesheet" href="/styles/tokens.css" />
+  <link rel="stylesheet" href="/styles/base.css" />
+  <link rel="stylesheet" href="/styles/layout.css" />
+  <link rel="stylesheet" href="/styles/components.css" />
+  <link rel="stylesheet" href="/styles/views.css" />
+</head>
+<body>
+  <!-- Pre-hydration splash. Removed by the app on first render so people never
+       see an unstyled or empty frame. -->
+  <div id="boot" class="boot">
+    <div class="boot__mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="48" height="48"><use href="/assets/icon.svg#mark" /></svg>
+    </div>
+    <div class="boot__bar"><span></span></div>
+  </div>
+
+  <div id="app" class="app-root" aria-live="polite"></div>
+
+  <div id="toasts" class="toast-stack" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+
+  <script type="module" src="/app/main.js"></script>
+  <noscript>
+    <p style="padding:2rem;font:16px system-ui">Routine Tracker needs JavaScript enabled.</p>
+  </noscript>
+</body>
+</html>

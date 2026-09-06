@@ -1,0 +1,13 @@
+{
+  "name": "Routine Tracker",
+  "short_name": "Routines",
+  "description": "Plan your routines by the hour, tick them off, and watch your streaks grow.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b0d14",
+  "theme_color": "#0b0d14",
+  "orientation": "portrait-primary",
+  "icons": [
+    { "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

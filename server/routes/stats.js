@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../db/index.js';
 import { asyncHandler } from '../middleware/error.js';
 import { todayIn, addDays } from '../lib/dates.js';
+import { isDueOn } from '../lib/schedule.js';
 import {
   buildDailySeries, computeStreak, routineStats, weekdayBreakdown,
   categoryBreakdown, computeXp, levelFromXp, round,
@@ -74,12 +75,55 @@ statsRouter.get('/overview', asyncHandler(async (req, res) => {
   });
 }));
 
+/**
+ * Lightweight numbers for the app shell: level, streak and today's progress.
+ *
+ * Deliberately separate from /achievements, which *persists* newly unlocked
+ * badges — the shell polls this often and must not consume the "newly
+ * unlocked" signal the achievements page uses to celebrate.
+ */
+statsRouter.get('/summary', asyncHandler(async (req, res) => {
+  const today = todayIn(req.user.timezone);
+  const routines = db.prepare('SELECT * FROM routines WHERE user_id = ?').all(req.user.id);
+  const active = routines.filter((r) => !r.archived);
+  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ?').all(req.user.id);
+
+  const firstDate = logs.reduce((min, l) => (min && min < l.log_date ? min : l.log_date), null) || today;
+  const series = buildDailySeries(active, logs, firstDate, today);
+  const level = levelFromXp(computeXp(routines, logs, series));
+
+  const dueToday = active.filter((r) => isDueOn(r, today));
+  const doneToday = new Set(
+    logs.filter((l) => l.log_date === today && l.status === 'done').map((l) => l.routine_id),
+  );
+
+  res.json({
+    date: today,
+    xp: level,
+    streak: computeStreak(series, req.user.daily_goal, today),
+    today: {
+      total: dueToday.length,
+      done: dueToday.filter((r) => doneToday.has(r.id)).length,
+      pending: dueToday.filter((r) => !doneToday.has(r.id)).length,
+    },
+  });
+}));
+
 /** GitHub-style activity heatmap. */
 statsRouter.get('/heatmap', asyncHandler(async (req, res) => {
-  const days = Math.min(371, Math.max(30, Number(req.query.days) || 182));
+  const days = Math.min(371, Math.max(30, Number(req.query.days) || 364));
   const { today, from, routines, logs } = loadWindow(req.user, days);
-  const series = buildDailySeries(routines.filter((r) => !r.archived), logs, from, today);
-  res.json({ from, to: today, days: series });
+  const active = routines.filter((r) => !r.archived);
+
+  // Start at the first day anything was actually scheduled: a long empty run
+  // before the account existed says nothing and reads as failure. A floor of
+  // eight weeks keeps a brand new account's grid from collapsing to one column.
+  const earliest = active.reduce((min, r) => (min && min <= r.start_date ? min : r.start_date), null);
+  const floor = addDays(today, -55);
+  const clamped = earliest && earliest > from ? earliest : from;
+  const start = clamped > floor ? floor : clamped;
+
+  res.json({ from: start, to: today, days: buildDailySeries(active, logs, start, today) });
 }));
 
 /** Per-routine leaderboard for the stats page. */
