@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../db/index.js';
+import { db, tx } from '../db/index.js';
 import { asyncHandler } from '../middleware/error.js';
 import { todayIn, addDays } from '../lib/dates.js';
 import { isDueOn } from '../lib/schedule.js';
@@ -176,7 +176,7 @@ statsRouter.get('/achievements', asyncHandler(async (req, res) => {
   const fresh = badges.filter((b) => b.unlocked && !unlockedSet.has(b.code));
   if (fresh.length) {
     const stmt = db.prepare('INSERT OR IGNORE INTO achievements (user_id, code) VALUES (?, ?)');
-    db.transaction(() => fresh.forEach((b) => stmt.run(req.user.id, b.code)))();
+    tx(() => fresh.forEach((b) => stmt.run(req.user.id, b.code)));
   }
 
   const unlockedAt = new Map(unlockedRows.map((r) => [r.code, r.unlocked_at]));

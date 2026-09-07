@@ -1,4 +1,4 @@
-import { db } from '../db/index.js';
+import { db, tx } from '../db/index.js';
 import { todayIn } from './dates.js';
 
 /**
@@ -114,12 +114,11 @@ export function applyTemplate(user, templateId) {
     .get(user.id).max;
 
   const stmt = db.prepare(INSERT);
-  const insertAll = db.transaction((items) => {
-    items.forEach((item, index) => {
+  tx(() => {
+    template.routines.forEach((item, index) => {
       stmt.run({ ...DEFAULTS, ...item, user_id: user.id, start_date, sort_order: base + index + 1 });
     });
   });
-  insertAll(template.routines);
 
   return template.routines.length;
 }
@@ -136,10 +135,9 @@ export function seedStarterRoutines(user) {
   ];
 
   const stmt = db.prepare(INSERT);
-  const insertAll = db.transaction((items) => {
-    items.forEach((item, index) => {
+  tx(() => {
+    starters.forEach((item, index) => {
       stmt.run({ ...DEFAULTS, ...item, user_id: user.id, start_date, sort_order: index + 1 });
     });
   });
-  insertAll(starters);
 }

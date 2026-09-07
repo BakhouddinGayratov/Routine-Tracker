@@ -2,7 +2,7 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
-import { purgeExpiredSessions } from './db/index.js';
+import { purgeExpiredSessions, driverName } from './db/index.js';
 import { requireAuth } from './middleware/auth.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { notFound, errorHandler } from './middleware/error.js';
@@ -102,7 +102,8 @@ purgeExpiredSessions();
 setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
 
 const server = app.listen(config.port, () => {
-  console.log(`\n  Routine Tracker running at http://localhost:${config.port}  (${config.env})\n`);
+  console.log(`\n  Routine Tracker running at http://localhost:${config.port}`);
+  console.log(`  ${config.env} · sqlite via ${driverName}\n`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

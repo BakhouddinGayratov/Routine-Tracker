@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../db/index.js';
+import { db, tx } from '../db/index.js';
 import { ApiError } from '../lib/errors.js';
 import { validate, v } from '../lib/validate.js';
 import { asyncHandler } from '../middleware/error.js';
@@ -144,7 +144,7 @@ routinesRouter.post('/reorder', asyncHandler(async (req, res) => {
   if (!ids?.length) throw ApiError.badRequest('Send an array of routine ids');
 
   const stmt = db.prepare('UPDATE routines SET sort_order = ? WHERE id = ? AND user_id = ?');
-  db.transaction(() => ids.forEach((id, i) => stmt.run(i + 1, id, req.user.id)))();
+  tx(() => ids.forEach((id, i) => stmt.run(i + 1, id, req.user.id)));
 
   res.json({ ok: true });
 }));

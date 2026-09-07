@@ -6,13 +6,16 @@ statistics and heatmaps show what your weeks actually look like.
 Full-stack, no build step: an Express + SQLite API and a hand-written
 ES-module SPA served from the same process.
 
+Requires **Node.js 22.13 or newer** ([nodejs.org](https://nodejs.org)) — nothing else.
+
 ```
 npm install
 npm start          # http://localhost:3000
 ```
 
-That's the whole setup. The database file, schema and JWT secret are created on
-first run.
+That's the whole setup. There are no native modules to compile: SQLite comes
+from Node itself (`node:sqlite`), so `npm install` is pure JavaScript on every
+platform. The database file, schema and JWT secret are created on first run.
 
 ---
 
@@ -111,6 +114,7 @@ default for local development.
 |---|---|---|
 | `PORT` | `3000` | |
 | `DATABASE_PATH` | `./data/routine-tracker.sqlite` | |
+| `DATABASE_DRIVER` | `auto` | `node` (built-in) or `better-sqlite3` to pin one |
 | `JWT_SECRET` | generated | **Required** when `NODE_ENV=production` |
 | `JWT_EXPIRES_IN` | `30d` | |
 | `NODE_ENV` | `development` | `production` enables secure cookies and HSTS |
@@ -133,6 +137,34 @@ Playwright is present:
 npm install --no-save playwright && npx playwright install chromium
 npm run test:ui
 ```
+
+## Troubleshooting
+
+**`Error: Cannot find module 'node:sqlite'`** or **`node:sqlite is experimental
+and requires the --experimental-sqlite flag`**
+
+Your Node is older than 22.13. Upgrade from [nodejs.org](https://nodejs.org)
+(`node -v` to check), or install the fallback driver instead:
+`npm install better-sqlite3`.
+
+**`Error: Could not locate the bindings file`** (mentioning `better_sqlite3.node`)
+
+You have an old `node_modules` from a version of this project that used the
+native driver. It no longer does — clear and reinstall:
+
+```bash
+rm -rf node_modules package-lock.json   # PowerShell: rm -r -fo node_modules, package-lock.json
+npm install
+```
+
+**`npm warn install-scripts ... had install scripts blocked`**
+
+Harmless now: no dependency here has an install script. If you see this, an old
+`package-lock.json` is still pinning the native driver — clear and reinstall as
+above.
+
+**Port 3000 is already in use** — start on another one: `PORT=3001 npm start`
+(PowerShell: `$env:PORT=3001; npm start`).
 
 ## API
 
@@ -213,6 +245,12 @@ editing a schedule instantly changes what the calendar and statistics show.
 **Validation is declarative.** Each endpoint states the shape it wants; the
 validator collects every field error before responding, so a form highlights
 all its problems in one round-trip.
+
+**SQLite comes from the runtime.** Node 22.13+ ships `node:sqlite`, so the app
+has no native dependency to compile and no prebuilt binary to hope for — a
+whole class of "works on my machine" failures simply cannot happen.
+`better-sqlite3` still works as a fallback if you install it and set
+`DATABASE_DRIVER=better-sqlite3`; both paths are covered by the test suite.
 
 **No innerHTML for user data.** The client builds every node through `el()`,
 which sets text and attributes rather than parsing markup. A routine titled

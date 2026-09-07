@@ -8,7 +8,7 @@
  * something real to show during development.
  */
 import bcrypt from 'bcryptjs';
-import { db } from './index.js';
+import { db, tx } from './index.js';
 import { TEMPLATES } from '../lib/starter.js';
 import { isDueOn } from '../lib/schedule.js';
 import { addDays, todayIn } from '../lib/dates.js';
@@ -44,7 +44,7 @@ const insertRoutine = db.prepare(
 );
 
 const created = [];
-db.transaction(() => {
+tx(() => {
   routines.forEach((routine, index) => {
     const row = {
       user_id: userId,
@@ -66,7 +66,7 @@ db.transaction(() => {
     const result = insertRoutine.run(row);
     created.push({ ...row, id: result.lastInsertRowid });
   });
-})();
+});
 
 const insertLog = db.prepare(
   `INSERT OR IGNORE INTO logs (routine_id, user_id, log_date, status, value, completed_at)
@@ -76,7 +76,7 @@ const insertLog = db.prepare(
 // Adherence that improves over time, dips at weekends, and varies per routine —
 // a flat 80% random draw produces charts that look fake.
 let logCount = 0;
-db.transaction(() => {
+tx(() => {
   for (let offset = 0; offset < DAYS; offset += 1) {
     const date = addDays(start, offset);
     const weekday = new Date(`${date}T12:00:00Z`).getUTCDay();
@@ -100,7 +100,7 @@ db.transaction(() => {
       }
     }
   }
-})();
+});
 
 // A handful of journal entries, weighted towards recent days.
 const insertJournal = db.prepare(
@@ -114,7 +114,7 @@ const notes = [
   'Low energy. Kept the streak alive with the small habits.',
   'Long work session; deep work blocks are finally sticking.',
 ];
-db.transaction(() => {
+tx(() => {
   for (let offset = 0; offset < 26; offset += 1) {
     const date = addDays(today, -offset * 2);
     if (date < start) break;
@@ -125,7 +125,7 @@ db.transaction(() => {
       notes[offset % notes.length],
     );
   }
-})();
+});
 
 console.log(`
   Seeded demo account

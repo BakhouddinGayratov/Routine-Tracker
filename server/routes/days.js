@@ -1,5 +1,5 @@
 import express from 'express';
-import { db } from '../db/index.js';
+import { db, tx } from '../db/index.js';
 import { ApiError } from '../lib/errors.js';
 import { validate, v } from '../lib/validate.js';
 import { asyncHandler } from '../middleware/error.js';
@@ -186,9 +186,9 @@ daysRouter.post('/:date/complete-all', asyncHandler(async (req, res) => {
        completed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
   );
 
-  db.transaction(() => {
+  tx(() => {
     for (const r of due) stmt.run(r.id, req.user.id, date, r.goal_type === 'quantity' ? r.target_value : 1);
-  })();
+  });
 
   res.json({ ok: true, count: due.length });
 }));
@@ -211,13 +211,13 @@ daysRouter.post('/:date/copy-from', asyncHandler(async (req, res) => {
   );
 
   let count = 0;
-  db.transaction(() => {
+  tx(() => {
     for (const log of sourceLogs) {
       if (!dueIds.has(log.routine_id)) continue;   // not scheduled on the target day
       stmt.run(log.routine_id, req.user.id, target, log.value);
       count += 1;
     }
-  })();
+  });
 
   res.json({ ok: true, count });
 }));

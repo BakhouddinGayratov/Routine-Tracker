@@ -49,6 +49,8 @@ export const config = {
   dataDir: DATA_DIR,
   publicDir: path.join(ROOT, 'public'),
   databasePath: path.resolve(ROOT, process.env.DATABASE_PATH || './data/routine-tracker.sqlite'),
+  // 'auto' prefers Node's built-in node:sqlite and falls back to better-sqlite3.
+  databaseDriver: process.env.DATABASE_DRIVER || 'auto',
   jwtSecret: resolveJwtSecret(),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
   corsOrigins: (process.env.CORS_ORIGINS || '')
