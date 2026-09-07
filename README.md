@@ -232,6 +232,13 @@ uses).
 | `GET /export`, `GET /export.csv` | Everything you've recorded |
 </details>
 
+## Working on this project
+
+[`CLAUDE.md`](CLAUDE.md) is the engineering handoff: the decisions behind the
+code and why they were made, the bugs already found and fixed, the conventions
+to keep, and what is deliberately left undone. Read it before changing anything
+non-trivial — Claude Code loads it automatically.
+
 ## Notes on the design
 
 **Dates are strings.** Everything is `YYYY-MM-DD`. They sort correctly, survive
