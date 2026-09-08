@@ -24,6 +24,7 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
 
   const draft = {
     title: routine?.title || '',
+    goal_id: routine?.goal_id ?? null,
     notes: routine?.notes || '',
     icon: routine?.icon || '✅',
     color: routine?.color || '#6366f1',
@@ -156,6 +157,26 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
       };
 
       const titleError = el('div', { class: 'field__error' });
+
+      // Which goal this routine serves. "No goal" is the default and stays
+      // selected until the user picks one, so a routine never needs a goal to
+      // exist. The list arrives after the dialog is already on screen.
+      const goalSelect = el('select', {
+        class: 'select', id: 'f-goal',
+        onchange: (e) => { draft.goal_id = e.target.value ? Number(e.target.value) : null; },
+      }, el('option', { value: '', selected: !draft.goal_id }, t('form.noGoal')));
+
+      api.goals()
+        .then(({ goals }) => {
+          for (const goal of goals) {
+            if (goal.status === 'archived') continue;
+            goalSelect.appendChild(el('option', {
+              value: String(goal.id),
+              selected: goal.id === draft.goal_id,
+            }, `${goal.icon} ${goal.title}`));
+          }
+        })
+        .catch(() => { /* the form is still usable without the goal list */ });
 
       // Everything beyond the name and the time slot is optional, so it starts
       // folded away: adding a routine should cost one field and two clocks.
@@ -330,6 +351,11 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
             ),
           ),
           el('div', { class: 'field__hint' }, t('form.timeHint')),
+        ),
+
+        el('div', { class: 'field' },
+          el('label', { class: 'field__label', for: 'f-goal' }, t('form.goal')),
+          goalSelect,
         ),
 
         el('div', { class: 'field' },

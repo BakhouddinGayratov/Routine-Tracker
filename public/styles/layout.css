@@ -251,6 +251,14 @@
     font-weight: 560;
     transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
+  /* Six tabs on a narrow phone: keep a long label on one line rather than
+     letting it wrap and make that one tab taller than its neighbours. */
+  .tabbar__item span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .tabbar__item:hover { text-decoration: none; }
   .tabbar__item.is-active { color: var(--accent); background: var(--accent-soft); }
 

@@ -308,6 +308,70 @@ await test('an unknown template returns 404', async () => {
   assert.equal(r.status, 404);
 });
 
+let goalId = null;
+
+await test('a goal can be created', async () => {
+  const r = await api('POST', '/api/goals', { title: 'Run a half marathon', target_date: '2027-01-01' });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.goal.status, 'active');
+  assert.equal(r.body.goal.progress.routines, 0);
+  // Nothing scheduled yet is not the same as nothing done.
+  assert.equal(r.body.goal.progress.completion, null);
+  goalId = r.body.goal.id;
+});
+
+await test('a goal without a title is rejected', async () => {
+  const r = await api('POST', '/api/goals', { title: '' });
+  assert.equal(r.status, 400);
+});
+
+await test('a routine can be pointed at a goal', async () => {
+  const r = await api('PATCH', `/api/routines/${routineId}`, { goal_id: goalId });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.routine.goal_id, goalId);
+});
+
+await test('a goal reports the progress of its routines', async () => {
+  const r = await api('GET', '/api/goals');
+  const goal = r.body.goals.find((g) => g.id === goalId);
+  assert.equal(goal.progress.routines, 1);
+  assert.ok(goal.progress.due > 0);
+  assert.ok(goal.routines.some((x) => x.id === routineId));
+});
+
+await test('an unknown goal cannot be linked', async () => {
+  const r = await api('PATCH', `/api/routines/${routineId}`, { goal_id: 999999 });
+  assert.equal(r.status, 400);
+});
+
+await test('a routine can be detached from its goal', async () => {
+  const r = await api('PATCH', `/api/routines/${routineId}`, { goal_id: null });
+  assert.equal(r.body.routine.goal_id, null);
+  const goals = await api('GET', '/api/goals');
+  assert.equal(goals.body.goals.find((g) => g.id === goalId).progress.routines, 0);
+});
+
+await test('a goal can be marked as reached', async () => {
+  await api('PATCH', `/api/routines/${routineId}`, { goal_id: goalId });
+  const r = await api('PATCH', `/api/goals/${goalId}`, { status: 'done' });
+  assert.equal(r.body.goal.status, 'done');
+});
+
+await test('deleting a goal keeps its routines and clears the link', async () => {
+  const del = await api('DELETE', `/api/goals/${goalId}`);
+  assert.equal(del.status, 200);
+  assert.equal(del.body.unlinked, 1);
+
+  const routine = await api('GET', `/api/routines/${routineId}`);
+  assert.equal(routine.status, 200);
+  assert.equal(routine.body.routine.goal_id, null);
+});
+
+await test('a deleted goal is gone', async () => {
+  const r = await api('PATCH', `/api/goals/${goalId}`, { title: 'Nope' });
+  assert.equal(r.status, 404);
+});
+
 await test('search finds routines by title', async () => {
   const r = await api('GET', '/api/search?q=Evening');
   assert.ok(r.body.routines.some((x) => x.title === 'Evening run'));
@@ -318,6 +382,7 @@ await test('export returns the full dataset', async () => {
   assert.equal(r.status, 200);
   assert.ok(r.body.routines.length > 0);
   assert.ok(r.body.logs.length > 0);
+  assert.ok(Array.isArray(r.body.goals));
   assert.equal(r.body.format, 'routine-tracker/v1');
 });
 

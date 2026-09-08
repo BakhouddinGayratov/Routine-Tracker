@@ -25,6 +25,7 @@ platform. The database file, schema and JWT secret are created on first run.
 |---|---|
 | **Today** | The day as a timeline, grouped by morning / afternoon / evening / night, with a "now" marker, a progress ring, the week strip and one-tap completion. |
 | **Routines** | Every routine you own — search, filter by category, archive, duplicate, or start from a template pack. |
+| **Goals** | What the routines are for. Each goal shows the routines pointing at it and how that work has gone over the last 30 days. |
 | **Calendar** | A month at a glance: completion per day plus the mood you logged. |
 | **Statistics** | Completion trend, weekday and category breakdowns, a year-long activity heatmap, and which habits are strongest or slipping. |
 | **Journal** | A line a day, with mood and energy, autosaved. |
@@ -47,6 +48,13 @@ expire. Every row is scoped to a user and cascades on account deletion.
 - a simple check, or a measurable target ("20 pages", "8 glasses")
 - priority, category, colour, icon, and an optional reminder
 
+**Goals.** A routine can point at a goal — the thing the daily work adds up to.
+Goals are entirely optional: "no goal" is the default when you add a routine,
+and nothing else changes if you never create one. A goal owns no schedule of
+its own; its numbers are derived from the routines attached to it, so "how is
+this goal going" and "did I do the work" can never disagree. Deleting a goal
+keeps its routines and only clears the link.
+
 **Logging.** One tap marks a routine done, skipped, or partially done. Logs are
 an idempotent upsert on `(routine, date)`, so double-tapping never creates two
 rows, and a quantity routine that reaches its target completes itself. A whole
@@ -66,7 +74,7 @@ themes, and a full JSON or CSV export of everything you've recorded.
 |---|---|
 | `Ctrl`/`⌘` + `K` | Command palette |
 | `N` | New routine |
-| `T` `R` `C` `S` `J` `A` | Today, Routines, Calendar, Statistics, Journal, Achievements |
+| `T` `R` `G` `C` `S` `J` `A` | Today, Routines, Goals, Calendar, Statistics, Journal, Achievements |
 | `Esc` | Close a dialog |
 
 ## Project layout
@@ -77,7 +85,8 @@ server/
   config.js         Environment + generated development secrets
   db/
     schema.sql      Tables, indexes and cascade rules
-    index.js        Connection, pragmas, migrations-on-boot
+    index.js        Connection, pragmas, schema and migrations on boot
+    migrate.js      Versioned upgrades for a database that already has data
     seed.js         Demo account with ~3 months of history
   lib/
     dates.js        ISO-date arithmetic, timezone-aware "today"
@@ -87,7 +96,7 @@ server/
     auth.js         Hashing, token issue and revocation
     validate.js     Declarative per-field request validation
     starter.js      Template packs and the sign-up starter set
-  routes/           auth, routines, days, stats, journal, misc
+  routes/           auth, routines, goals, days, stats, journal, misc
   middleware/       auth, rate limiting, error handling
 
 public/
@@ -102,7 +111,7 @@ public/
     i18n.js         English, Uzbek, Russian
     views/          One module per screen
 
-tests/api.test.js   47 end-to-end API tests
+tests/api.test.js   56 end-to-end API tests
 ```
 
 ## Configuration
@@ -125,7 +134,7 @@ default for local development.
 ```
 npm start      # run the server
 npm run dev    # run with --watch
-npm test       # 47 end-to-end API tests against a throwaway database
+npm test       # 56 end-to-end API tests against a throwaway database
 npm run test:ui  # 30 browser tests: drives the real UI in Chromium
 npm run seed   # demo account: demo@routine.app / demopass123
 ```
@@ -203,6 +212,17 @@ uses).
 </details>
 
 <details>
+<summary><b>Goals</b></summary>
+
+| | |
+|---|---|
+| `GET /goals` | List with per-goal progress over the last 30 days (`?status=all` to include archived) |
+| `POST /goals` | Create |
+| `PATCH /goals/:id` | Update (partial) — this is also how a goal is marked reached |
+| `DELETE /goals/:id` | Delete; the routines survive with their link cleared |
+</details>
+
+<details>
 <summary><b>Days and logs</b></summary>
 
 | | |
@@ -248,6 +268,13 @@ JSON, and can't drift across a daylight-saving boundary. Conversion to a real
 **Recurrence is computed, not stored.** There is no table of future occurrences
 to keep in sync — `isDueOn(routine, date)` answers the question directly, so
 editing a schedule instantly changes what the calendar and statistics show.
+
+**Your data outlives the code.** The database file is never recreated. On every
+start the schema is replayed — every statement guarded with `IF NOT EXISTS`, so
+it only adds what is missing — and then `db/migrate.js` applies any versioned
+upgrades an existing database has not seen yet, tracked by SQLite's own
+`user_version`. Updating the app keeps your accounts, routines, logs and
+journal entries exactly where they were.
 
 **Validation is declarative.** Each endpoint states the shape it wants; the
 validator collects every field error before responding, so a form highlights

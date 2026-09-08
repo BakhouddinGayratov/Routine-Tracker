@@ -87,6 +87,12 @@ export const api = {
   duplicateRoutine: (id) => post(`/routines/${id}/duplicate`),
   reorderRoutines: (ids) => post('/routines/reorder', { ids }),
 
+  // Goals -----------------------------------------------------------------
+  goals: (all = false) => get(`/goals${all ? '?status=all' : ''}`),
+  createGoal: (data) => post('/goals', data),
+  updateGoal: (id, data) => patch(`/goals/${id}`, data),
+  deleteGoal: (id) => del(`/goals/${id}`),
+
   // Days & logs -----------------------------------------------------------
   day: (date) => get(`/days/${date}`),
   week: (date) => get(`/days/${date}/week`),

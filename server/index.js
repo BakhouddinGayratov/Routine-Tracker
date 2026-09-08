@@ -2,12 +2,13 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
-import { purgeExpiredSessions, driverName } from './db/index.js';
+import { purgeExpiredSessions, driverName, appliedMigrations } from './db/index.js';
 import { requireAuth } from './middleware/auth.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { notFound, errorHandler } from './middleware/error.js';
 import { authRouter } from './routes/auth.js';
 import { routinesRouter } from './routes/routines.js';
+import { goalsRouter } from './routes/goals.js';
 import { daysRouter } from './routes/days.js';
 import { statsRouter } from './routes/stats.js';
 import { journalRouter } from './routes/journal.js';
@@ -75,6 +76,7 @@ app.use('/api', rateLimit({ windowMs: 60_000, max: 300 }));
 
 app.use('/api/auth', authRouter);
 app.use('/api/routines', requireAuth, routinesRouter);
+app.use('/api/goals', requireAuth, goalsRouter);
 app.use('/api/days', requireAuth, daysRouter);
 app.use('/api/stats', requireAuth, statsRouter);
 app.use('/api/journal', requireAuth, journalRouter);
@@ -103,7 +105,11 @@ setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
 
 const server = app.listen(config.port, () => {
   console.log(`\n  Routine Tracker running at http://localhost:${config.port}`);
-  console.log(`  ${config.env} · sqlite via ${driverName}\n`);
+  console.log(`  ${config.env} · sqlite via ${driverName}`);
+  // Say so when an existing database was upgraded, so an unexpected schema
+  // change is visible in the log rather than silent.
+  for (const name of appliedMigrations) console.log(`  migrated: ${name}`);
+  console.log('');
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

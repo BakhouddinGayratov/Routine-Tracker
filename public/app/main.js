@@ -12,6 +12,7 @@ import { renderAuth } from './views/auth.js';
 import { renderToday } from './views/today.js';
 import { renderRoutines } from './views/routines.js';
 import { renderRoutineDetail } from './views/routine-detail.js';
+import { renderGoals } from './views/goals.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderStats } from './views/stats.js';
 import { renderJournal } from './views/journal.js';
@@ -35,6 +36,7 @@ const ROUTES = [
   { path: '/day/:date', nav: 'today', view: (c, p) => renderToday(c, { ...p, date: p.params.date }) },
   { path: '/routines', nav: 'routines', view: (c, p) => renderRoutines(c, p) },
   { path: '/routine/:id', nav: 'routines', view: (c, p) => renderRoutineDetail(c, { ...p, id: p.params.id }) },
+  { path: '/goals', nav: 'goals', view: (c, p) => renderGoals(c, p) },
   { path: '/calendar', nav: 'calendar', view: (c, p) => renderCalendar(c, p) },
   { path: '/stats', nav: 'stats', view: (c, p) => renderStats(c, p) },
   { path: '/journal', nav: 'journal', view: (c, p) => renderJournal(c, p) },
@@ -73,13 +75,16 @@ window.addEventListener('popstate', () => render());
 const NAV_ITEMS = [
   { key: 'today', path: '/today', icon: 'today', label: () => t('nav.today'), group: 'plan' },
   { key: 'routines', path: '/routines', icon: 'routines', label: () => t('nav.routines'), group: 'plan' },
+  { key: 'goals', path: '/goals', icon: 'target', label: () => t('nav.goals'), group: 'plan' },
   { key: 'calendar', path: '/calendar', icon: 'calendar', label: () => t('nav.calendar'), group: 'plan' },
   { key: 'stats', path: '/stats', icon: 'stats', label: () => t('nav.stats'), group: 'insight' },
   { key: 'journal', path: '/journal', icon: 'journal', label: () => t('nav.journal'), group: 'insight' },
   { key: 'achievements', path: '/achievements', icon: 'trophy', label: () => t('nav.achievements'), group: 'insight' },
 ];
 
-const TAB_ITEMS = ['today', 'routines', 'calendar', 'stats', 'settings'];
+// The sidebar is hidden on a phone, so anything missing from here is
+// unreachable there.
+const TAB_ITEMS = ['today', 'routines', 'goals', 'calendar', 'stats', 'settings'];
 
 function shell(activeNav, content) {
   return el('div', { class: 'shell' },
@@ -197,6 +202,7 @@ function header(activeNav) {
   const titles = {
     today: t('nav.today'),
     routines: t('nav.routines'),
+    goals: t('nav.goals'),
     calendar: t('nav.calendar'),
     stats: t('nav.stats'),
     journal: t('nav.journal'),
@@ -355,6 +361,7 @@ document.addEventListener('keydown', (event) => {
     n: () => openRoutineForm(null, { weekStart: state.user.week_start, onSaved: () => render() }),
     t: () => navigate('/today'),
     r: () => navigate('/routines'),
+    g: () => navigate('/goals'),
     c: () => navigate('/calendar'),
     s: () => navigate('/stats'),
     j: () => navigate('/journal'),

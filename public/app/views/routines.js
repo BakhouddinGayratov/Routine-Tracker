@@ -11,6 +11,7 @@ import { formatDuration, debounce } from '../utils.js';
 export function renderRoutines(container, { navigate }) {
   let routines = [];
   let templates = [];
+  let goalsById = new Map();
   let query = '';
   let filter = 'active';   // active | archived | all
   let category = 'all';
@@ -19,9 +20,12 @@ export function renderRoutines(container, { navigate }) {
 
   const load = async () => {
     try {
-      const [routinesRes, templatesRes] = await Promise.all([api.routines(true), api.templates()]);
+      const [routinesRes, templatesRes, goalsRes] = await Promise.all([
+        api.routines(true), api.templates(), api.goals(true),
+      ]);
       routines = routinesRes.routines;
       templates = templatesRes.templates;
+      goalsById = new Map(goalsRes.goals.map((g) => [g.id, g]));
       render();
     } catch (err) {
       mount(container, emptyState({
@@ -143,6 +147,9 @@ export function renderRoutines(container, { navigate }) {
         el('i', { class: 'chip__dot', style: { background: routine.color, color: routine.color } }),
         t(`cat.${routine.category}`)),
       el('span', { class: 'chip' }, icon('repeat', { size: 11 }), routine.repeat_label),
+      goalsById.has(routine.goal_id)
+        ? el('span', { class: 'chip' }, icon('target', { size: 11 }), goalsById.get(routine.goal_id).title)
+        : null,
       routine.goal_type === 'quantity'
         ? el('span', { class: 'chip' }, icon('target', { size: 11 }), `${trim(routine.target_value)} ${routine.unit}`)
         : null,

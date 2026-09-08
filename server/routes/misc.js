@@ -39,6 +39,7 @@ miscRouter.get('/export', asyncHandler(async (req, res) => {
     exported_at: new Date().toISOString(),
     format: 'routine-tracker/v1',
     user: publicUser(req.user),
+    goals: db.prepare('SELECT * FROM goals WHERE user_id = ? ORDER BY id').all(req.user.id),
     routines: db.prepare('SELECT * FROM routines WHERE user_id = ? ORDER BY id').all(req.user.id),
     logs: db.prepare('SELECT * FROM logs WHERE user_id = ? ORDER BY log_date').all(req.user.id),
     journal: db.prepare('SELECT * FROM journal WHERE user_id = ? ORDER BY entry_date').all(req.user.id),

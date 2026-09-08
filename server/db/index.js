@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { selectDriver } from './driver.js';
+import { migrate } from './migrate.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,7 +22,11 @@ db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = ON');
 db.exec('PRAGMA busy_timeout = 5000');
 
+// Create anything that is missing, then upgrade anything that already exists.
+// Both steps preserve existing rows, so a database survives an app update.
 db.exec(fs.readFileSync(path.join(here, 'schema.sql'), 'utf8'));
+
+export const appliedMigrations = migrate(db);
 
 /**
  * Run `fn` inside a transaction and return its result.

@@ -13,6 +13,7 @@ export const CATEGORIES = ['health', 'fitness', 'work', 'study', 'personal', 'mi
 
 const writeSchema = {
   title:        v.string({ min: 1, max: 120 }),
+  goal_id:      { rule: v.nullable(v.int({ min: 1 })), default: null },
   notes:        { rule: v.string({ max: 2000 }), default: '' },
   icon:         { rule: v.emoji(), default: '✅' },
   color:        { rule: v.color(), default: '#6366f1' },
@@ -39,6 +40,16 @@ function ownedRoutine(userId, id) {
   const routine = db.prepare('SELECT * FROM routines WHERE id = ? AND user_id = ?').get(id, userId);
   if (!routine) throw ApiError.notFound('Routine not found');
   return routine;
+}
+
+/**
+ * A goal id arrives from the client, so it has to be proven to belong to this
+ * account — the foreign key alone would happily point at someone else's goal.
+ */
+function assertGoalOwned(userId, goalId) {
+  if (!goalId) return;
+  const goal = db.prepare('SELECT id FROM goals WHERE id = ? AND user_id = ?').get(goalId, userId);
+  if (!goal) throw ApiError.badRequest('That goal does not exist', { goal_id: 'Unknown goal' });
 }
 
 /** Reject rules that would never fire, before they silently disappear from the UI. */
@@ -103,17 +114,18 @@ routinesRouter.post('/', asyncHandler(async (req, res) => {
   const body = { start_date: todayIn(req.user.timezone), ...req.body };
   const data = validate(body, writeSchema);
   assertCoherent(data);
+  assertGoalOwned(req.user.id, data.goal_id);
 
   const sort_order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?')
     .get(req.user.id).next;
 
   const info = db.prepare(
     `INSERT INTO routines (
-       user_id, title, notes, icon, color, category, priority, start_time, duration_min,
+       user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
        repeat_type, repeat_days, repeat_every, start_date, end_date,
        goal_type, target_value, unit, reminder_min, sort_order
      ) VALUES (
-       @user_id, @title, @notes, @icon, @color, @category, @priority, @start_time, @duration_min,
+       @user_id, @goal_id, @title, @notes, @icon, @color, @category, @priority, @start_time, @duration_min,
        @repeat_type, @repeat_days, @repeat_every, @start_date, @end_date,
        @goal_type, @target_value, @unit, @reminder_min, @sort_order
      )`,
@@ -128,6 +140,7 @@ routinesRouter.patch('/:id', asyncHandler(async (req, res) => {
   const data = validate(req.body, { ...writeSchema, archived: v.bool(), sort_order: v.int({ min: 0, max: 1e6 }) }, { partial: true });
   if (Object.keys(data).length === 0) throw ApiError.badRequest('Nothing to update');
   assertCoherent({ ...existing, ...data });
+  if ('goal_id' in data) assertGoalOwned(req.user.id, data.goal_id);
 
   const sets = Object.keys(data).map((k) => `${k} = @${k}`).join(', ');
   db.prepare(
@@ -163,11 +176,11 @@ routinesRouter.post('/:id/duplicate', asyncHandler(async (req, res) => {
 
   const info = db.prepare(
     `INSERT INTO routines (
-       user_id, title, notes, icon, color, category, priority, start_time, duration_min,
+       user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
        repeat_type, repeat_days, repeat_every, start_date, end_date,
        goal_type, target_value, unit, reminder_min, sort_order
      )
-     SELECT user_id, title || ' (copy)', notes, icon, color, category, priority, start_time, duration_min,
+     SELECT user_id, goal_id, title || ' (copy)', notes, icon, color, category, priority, start_time, duration_min,
             repeat_type, repeat_days, repeat_every, start_date, end_date,
             goal_type, target_value, unit, reminder_min, ?
      FROM routines WHERE id = ? AND user_id = ?`,

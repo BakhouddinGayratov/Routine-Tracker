@@ -33,12 +33,32 @@ const userId = info.lastInsertRowid;
 const routines = ['morning', 'fitness', 'study']
   .flatMap((id) => TEMPLATES.find((tpl) => tpl.id === id).routines);
 
+// Two goals, each fed by one category of routine. The morning routines stay
+// unassigned on purpose, so the demo also shows what "no goal" looks like.
+const insertGoal = db.prepare(
+  `INSERT INTO goals (user_id, title, description, icon, color, target_date)
+   VALUES (?, ?, ?, ?, ?, ?)`,
+);
+
+const goalByCategory = {};
+tx(() => {
+  goalByCategory.fitness = insertGoal.run(
+    userId, 'Run a 10K', 'Build up to a full 10 kilometres without stopping.', '🏃', '#f97316',
+    addDays(today, 90),
+  ).lastInsertRowid;
+
+  goalByCategory.study = insertGoal.run(
+    userId, 'Finish the course', 'One chapter at a time, every weekday.', '📚', '#3b82f6',
+    addDays(today, 45),
+  ).lastInsertRowid;
+});
+
 const insertRoutine = db.prepare(
   `INSERT INTO routines (
-     user_id, title, notes, icon, color, category, priority, start_time, duration_min,
+     user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
      repeat_type, repeat_days, repeat_every, start_date, goal_type, target_value, unit, sort_order
    ) VALUES (
-     @user_id, @title, '', @icon, @color, @category, @priority, @start_time, @duration_min,
+     @user_id, @goal_id, @title, '', @icon, @color, @category, @priority, @start_time, @duration_min,
      @repeat_type, @repeat_days, 1, @start_date, @goal_type, @target_value, @unit, @sort_order
    )`,
 );
@@ -48,6 +68,7 @@ tx(() => {
   routines.forEach((routine, index) => {
     const row = {
       user_id: userId,
+      goal_id: goalByCategory[routine.category] ?? null,
       title: routine.title,
       icon: routine.icon || '✅',
       color: routine.color || '#6366f1',

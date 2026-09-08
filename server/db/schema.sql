@@ -25,11 +25,32 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 
+-- A goal is the *why* a routine exists: the thing the daily work adds up to.
+-- Goals are optional; a routine with goal_id NULL is simply not tied to one.
+-- Deleting a goal keeps its routines and only clears the link.
+CREATE TABLE IF NOT EXISTS goals (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title        TEXT    NOT NULL,
+  description  TEXT    NOT NULL DEFAULT '',
+  icon         TEXT    NOT NULL DEFAULT '🎯',
+  color        TEXT    NOT NULL DEFAULT '#6366f1',
+  target_date  TEXT,                                -- 'YYYY-MM-DD', NULL = open ended
+  status       TEXT    NOT NULL DEFAULT 'active'
+               CHECK (status IN ('active','done','archived')),
+  sort_order   INTEGER NOT NULL DEFAULT 0,
+  created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_goals_user ON goals(user_id, status);
+
 -- A routine is the *definition* of a recurring piece of work: what it is, when
 -- it should happen and how often it repeats.
 CREATE TABLE IF NOT EXISTS routines (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  goal_id        INTEGER REFERENCES goals(id) ON DELETE SET NULL,  -- NULL = no goal
   title          TEXT    NOT NULL,
   notes          TEXT    NOT NULL DEFAULT '',
   icon           TEXT    NOT NULL DEFAULT '✅',
