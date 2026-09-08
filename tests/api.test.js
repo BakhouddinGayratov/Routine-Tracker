@@ -20,6 +20,7 @@ process.env.PORT = '4310';
 process.env.JWT_SECRET = 'test-secret-not-used-in-production';
 
 const { app } = await import('../server/index.js');
+const { db } = await import('../server/db/index.js');
 const base = 'http://localhost:4310';
 
 let passed = 0;
@@ -385,6 +386,10 @@ await test('deleting an account removes all of its data', async () => {
 });
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
+
+// Windows keeps a lock on an open database file, so the connection has to be
+// closed before the throwaway database can be removed.
+db.close();
 
 for (const file of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
   if (fs.existsSync(file)) fs.unlinkSync(file);
