@@ -31,6 +31,7 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
     priority: routine?.priority || 'normal',
     start_time: routine?.start_time || '',
     duration_min: routine?.duration_min ?? 0,
+    end_time: endTimeOf(routine),
     repeat_type: routine?.repeat_type || 'daily',
     repeat_days: routine?.repeat_days || '',
     repeat_every: routine?.repeat_every || 2,
@@ -43,6 +44,17 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
   };
 
   const errors = {};
+
+  /**
+   * The server stores a start time plus a length; people describe a slot as
+   * "6 to 7". So the form collects a finish time and derives the length here.
+   * A finish at or before the start means the routine runs past midnight.
+   */
+  const syncDuration = () => {
+    const from = toMinutes(draft.start_time);
+    const to = toMinutes(draft.end_time);
+    draft.duration_min = from === null || to === null ? 0 : (to - from + 1440) % 1440;
+  };
 
   modal({
     title: isEdit ? t('form.editRoutine') : t('form.newRoutine'),
@@ -60,7 +72,7 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
           el('div', { class: 'routine__body' },
             el('div', { class: 'routine__title' }, draft.title || t('form.titlePlaceholder')),
             el('div', { class: 'routine__meta' },
-              draft.start_time ? el('span', null, draft.start_time) : el('span', null, t('part.anytime')),
+              el('span', null, timeSummary(draft)),
               el('span', null, t(`cat.${draft.category}`)),
               draft.duration_min ? el('span', null, `${draft.duration_min} ${t('misc.min')}`) : null,
               el('span', null, repeatSummary(draft)),
@@ -145,18 +157,9 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
 
       const titleError = el('div', { class: 'field__error' });
 
-      const body = el('div', { class: 'col', style: { gap: 'var(--s-5)' } },
-        // Identity ---------------------------------------------------------
-        el('div', { class: 'field' },
-          el('label', { class: 'field__label', for: 'f-title' }, t('form.title')),
-          el('input', {
-            class: 'input', id: 'f-title', type: 'text', maxlength: '120',
-            value: draft.title, placeholder: t('form.titlePlaceholder'), 'data-autofocus': '',
-            oninput: (e) => { draft.title = e.target.value; titleError.textContent = ''; refreshPreview(); },
-          }),
-          titleError,
-        ),
-
+      // Everything beyond the name and the time slot is optional, so it starts
+      // folded away: adding a routine should cost one field and two clocks.
+      const advanced = el('div', { class: 'col', style: { gap: 'var(--s-5)' } },
         el('div', { class: 'field' },
           el('div', { class: 'field__label' }, t('form.icon')),
           el('div', { class: 'picker-grid' },
@@ -214,26 +217,6 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
           ),
         ),
 
-        // Schedule -----------------------------------------------------------
-        el('div', { class: 'grid grid--2' },
-          el('div', { class: 'field' },
-            el('label', { class: 'field__label', for: 'f-time' }, t('form.time')),
-            el('input', {
-              class: 'input', id: 'f-time', type: 'time', value: draft.start_time,
-              oninput: (e) => { draft.start_time = e.target.value; refreshPreview(); },
-            }),
-            el('div', { class: 'field__hint' }, t('form.timeHint')),
-          ),
-          el('div', { class: 'field' },
-            el('label', { class: 'field__label', for: 'f-duration' }, t('form.duration')),
-            el('input', {
-              class: 'input', id: 'f-duration', type: 'number', min: '0', max: '1440', step: '5',
-              value: draft.duration_min,
-              oninput: (e) => { draft.duration_min = Number(e.target.value) || 0; refreshPreview(); },
-            }),
-          ),
-        ),
-
         el('div', { class: 'field' },
           el('label', { class: 'field__label', for: 'f-repeat' }, t('form.repeat')),
           el('select', {
@@ -261,7 +244,6 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
           ),
         ),
 
-        // Tracking -----------------------------------------------------------
         el('div', { class: 'field' },
           el('div', { class: 'field__label' }, t('form.goalType')),
           el('div', { class: 'segmented' },
@@ -300,12 +282,63 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
             oninput: (e) => { draft.notes = e.target.value; },
           }, draft.notes),
         ),
+      );
 
-        // Live preview -------------------------------------------------------
+      // Editing opens expanded: the detail being changed is usually one of the
+      // ones that live in here. This folds with the `.hidden` class rather than
+      // the hidden attribute, because `.col`'s display would beat `[hidden]`.
+      if (!isEdit) advanced.classList.add('hidden');
+
+      const advancedToggle = el('button', {
+        class: 'btn btn--ghost btn--block', type: 'button',
+        'aria-expanded': String(isEdit),
+        onclick: (event) => {
+          const button = event.currentTarget;
+          const folded = advanced.classList.toggle('hidden');
+          button.setAttribute('aria-expanded', String(!folded));
+          button.textContent = folded ? t('form.moreOptions') : t('form.lessOptions');
+        },
+      }, isEdit ? t('form.lessOptions') : t('form.moreOptions'));
+
+      const body = el('div', { class: 'col', style: { gap: 'var(--s-5)' } },
+        // The entire required form: what it is called, and when it happens.
         el('div', { class: 'field' },
-          el('div', { class: 'field__label' }, 'Preview'),
+          el('label', { class: 'field__label', for: 'f-title' }, t('form.title')),
+          el('input', {
+            class: 'input', id: 'f-title', type: 'text', maxlength: '120',
+            value: draft.title, placeholder: t('form.titlePlaceholder'), 'data-autofocus': '',
+            oninput: (e) => { draft.title = e.target.value; titleError.textContent = ''; refreshPreview(); },
+          }),
+          titleError,
+        ),
+
+        el('div', { class: 'field' },
+          el('div', { class: 'grid grid--2' },
+            el('div', { class: 'field' },
+              el('label', { class: 'field__label', for: 'f-time' }, t('form.startTime')),
+              el('input', {
+                class: 'input', id: 'f-time', type: 'time', value: draft.start_time,
+                oninput: (e) => { draft.start_time = e.target.value; syncDuration(); refreshPreview(); },
+              }),
+            ),
+            el('div', { class: 'field' },
+              el('label', { class: 'field__label', for: 'f-end-time' }, t('form.endTime')),
+              el('input', {
+                class: 'input', id: 'f-end-time', type: 'time', value: draft.end_time,
+                oninput: (e) => { draft.end_time = e.target.value; syncDuration(); refreshPreview(); },
+              }),
+            ),
+          ),
+          el('div', { class: 'field__hint' }, t('form.timeHint')),
+        ),
+
+        el('div', { class: 'field' },
+          el('div', { class: 'field__label' }, t('form.preview')),
           preview,
         ),
+
+        advancedToggle,
+        advanced,
       );
 
       renderRepeat();
@@ -323,8 +356,10 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
         }
         save.setAttribute('aria-busy', 'true');
 
+        // end_time only exists in the form; the API stores duration_min.
+        const { end_time: _formEndTime, ...fields } = draft;
         const payload = {
-          ...draft,
+          ...fields,
           title: draft.title.trim(),
           start_time: draft.start_time || null,
           end_date: draft.end_date || null,
@@ -381,4 +416,25 @@ function repeatSummary(draft) {
     }
     default: return '';
   }
+}
+
+/** Minutes since midnight for an "HH:MM" string, or null when it is unset. */
+function toMinutes(time) {
+  if (!time) return null;
+  const [hours, minutes] = String(time).split(':').map(Number);
+  return Number.isInteger(hours) && Number.isInteger(minutes) ? hours * 60 + minutes : null;
+}
+
+/** The finish time implied by a saved routine's start time and duration. */
+function endTimeOf(routine) {
+  const start = toMinutes(routine?.start_time);
+  if (start === null || !routine?.duration_min) return '';
+  const end = (start + routine.duration_min) % 1440;
+  return `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+}
+
+/** "06:00 – 07:00", a bare start time, or "anytime". */
+function timeSummary(draft) {
+  if (!draft.start_time) return t('part.anytime');
+  return draft.end_time ? `${draft.start_time} – ${draft.end_time}` : draft.start_time;
 }
