@@ -143,7 +143,42 @@
 }
 .header__title { font-size: var(--text-md); font-weight: 640; letter-spacing: -0.02em; }
 .header__sub { font-size: var(--text-xs); color: var(--fg-subtle); }
-.header__actions { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); }
+.header__text { min-width: 0; }
+.header__actions { margin-left: auto; display: flex; align-items: center; gap: var(--s-2); flex: none; }
+
+/* Account menu: phones only — the sidebar carries these links elsewhere. */
+.account-menu { position: relative; display: none; }
+.account-menu__button { display: grid; place-items: center; border-radius: var(--r-full); }
+.account-menu__button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.account-menu__list {
+  position: absolute;
+  top: calc(100% + var(--s-2));
+  right: 0;
+  z-index: 60;
+  width: min(260px, calc(100vw - 2 * var(--s-4)));
+  padding: var(--s-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.account-menu__who { padding: var(--s-2) var(--s-3) var(--s-3); border-bottom: 1px solid var(--line); margin-bottom: var(--s-1); min-width: 0; }
+.account-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  color: var(--fg-muted);
+  font-weight: 540;
+  text-align: left;
+}
+.account-menu__item:hover, .account-menu__item:focus-visible { background: var(--surface-hover); color: var(--fg); text-decoration: none; outline: none; }
+.account-menu__item.is-active { background: var(--accent-soft); color: var(--fg); }
 
 .search-trigger {
   display: flex;
@@ -204,15 +239,41 @@
 
 .tabbar { display: none; }
 
-@media (max-width: 1080px) {
-  :root { --sidebar-w: 76px; }
-  .brand__text, .nav__item span:not(.nav__badge), .sidebar .level-card, .user-chip__meta { display: none; }
-  .sidebar { align-items: center; padding-inline: var(--s-2); }
-  .nav__item { justify-content: center; padding: var(--s-3); }
-  .nav__item.is-active::before { display: none; }
-  .nav__label { display: none; }
-  .user-chip { justify-content: center; }
+/* Collapsed sidebar. main.js decides when (narrow screens by default, or the
+   user's own choice from the toggle), so this is keyed on a class rather than
+   a media query. */
+.shell.is-collapsed { --sidebar-w: 76px; }
+.shell.is-collapsed .brand__text,
+.shell.is-collapsed .nav__item span:not(.nav__badge),
+.shell.is-collapsed .sidebar .level-card,
+.shell.is-collapsed .user-chip__meta,
+.shell.is-collapsed .nav__label { display: none; }
+.shell.is-collapsed .sidebar { align-items: center; padding-inline: var(--s-2); }
+.shell.is-collapsed .nav__item { justify-content: center; padding: var(--s-3); }
+.shell.is-collapsed .nav__item.is-active::before { display: none; }
+.shell.is-collapsed .user-chip { justify-content: center; }
+/* The Today badge would sit on top of the icon; a dot says the same thing. */
+.shell.is-collapsed .nav__badge {
+  position: absolute; top: 6px; right: 6px;
+  min-width: 0; width: 8px; height: 8px; padding: 0;
+  font-size: 0;
+  background: var(--accent);
 }
+
+.sidebar__toggle { width: 100%; text-align: left; }
+
+/* Sidebar tooltips open to the right of the icon, and only while collapsed:
+   expanded, the label is already on screen and a tooltip would repeat it. */
+.sidebar [data-tip]::after {
+  left: calc(100% + 12px);
+  bottom: auto;
+  top: 50%;
+  transform: translate(-4px, -50%);
+  z-index: 60;
+}
+.sidebar [data-tip]:hover::after,
+.sidebar [data-tip]:focus-visible::after { transform: translate(0, -50%); }
+.shell:not(.is-collapsed) .sidebar [data-tip]::after { display: none; }
 
 @media (max-width: 760px) {
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -225,6 +286,7 @@
   /* The day view already offers a prominent "add", so the header shrinks to an icon. */
   .header__actions .btn--primary span { display: none; }
   .header__actions .btn--primary { padding: var(--s-2) var(--s-3); }
+  .account-menu { display: block; }
 
   .tabbar {
     position: fixed;
@@ -232,7 +294,9 @@
     z-index: 40;
     display: grid;
     grid-auto-flow: column;
-    grid-auto-columns: 1fr;
+    /* minmax(0, …): a plain 1fr refuses to shrink below the longest label,
+       which is how six tabs once pushed the bar past a 375px screen. */
+    grid-auto-columns: minmax(0, 1fr);
     gap: 2px;
     padding: var(--s-2) var(--s-2) calc(var(--s-2) + env(safe-area-inset-bottom));
     border-top: 1px solid var(--line);
@@ -251,8 +315,8 @@
     font-weight: 560;
     transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
-  /* Six tabs on a narrow phone: keep a long label on one line rather than
-     letting it wrap and make that one tab taller than its neighbours. */
+  /* Keep a long label ("Statistika") on one line rather than letting it
+     wrap and make that one tab taller than its neighbours. */
   .tabbar__item span {
     max-width: 100%;
     overflow: hidden;

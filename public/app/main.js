@@ -82,12 +82,54 @@ const NAV_ITEMS = [
   { key: 'achievements', path: '/achievements', icon: 'trophy', label: () => t('nav.achievements'), group: 'insight' },
 ];
 
-// The sidebar is hidden on a phone, so anything missing from here is
-// unreachable there.
-const TAB_ITEMS = ['today', 'routines', 'goals', 'calendar', 'stats', 'settings'];
+// The sidebar is hidden on a phone. Five tabs is what fits across a 375px
+// screen; everything else a phone needs lives in the header's account menu
+// (ACCOUNT_ITEMS), so no screen becomes unreachable.
+const TAB_ITEMS = ['today', 'routines', 'goals', 'calendar', 'stats'];
+const ACCOUNT_ITEMS = [
+  { key: 'journal', path: '/journal', icon: 'journal', label: () => t('nav.journal') },
+  { key: 'achievements', path: '/achievements', icon: 'trophy', label: () => t('nav.achievements') },
+  { key: 'settings', path: '/settings', icon: 'settings', label: () => t('nav.settings') },
+];
+
+/* --- Sidebar collapse ----------------------------------------------------- */
+
+// The sidebar collapses to icons on mid-size screens by default. Once the user
+// picks a state with the toggle, that choice wins at every width, and is kept
+// per browser — it is a viewing preference, not account data.
+const SIDEBAR_KEY = 'rt.sidebar';
+const narrowScreen = window.matchMedia('(max-width: 1080px)');
+
+function sidebarPreference() {
+  try { return localStorage.getItem(SIDEBAR_KEY); } catch { return null; }
+}
+
+function isSidebarCollapsed() {
+  const preference = sidebarPreference();
+  return preference ? preference === 'collapsed' : narrowScreen.matches;
+}
+
+function applySidebarState() {
+  const collapsed = isSidebarCollapsed();
+  document.querySelector('.shell')?.classList.toggle('is-collapsed', collapsed);
+  const toggle = document.querySelector('.sidebar__toggle');
+  if (!toggle) return;
+  const label = collapsed ? t('nav.expand') : t('nav.collapse');
+  toggle.setAttribute('aria-expanded', String(!collapsed));
+  toggle.setAttribute('aria-label', label);
+  toggle.dataset.tip = label;
+  toggle.replaceChildren(icon(collapsed ? 'chevronRight' : 'chevronLeft', { size: 18 }), el('span', null, label));
+}
+
+function toggleSidebar() {
+  try { localStorage.setItem(SIDEBAR_KEY, isSidebarCollapsed() ? 'expanded' : 'collapsed'); } catch { /* ignore */ }
+  applySidebarState();
+}
+
+narrowScreen.addEventListener('change', applySidebarState);
 
 function shell(activeNav, content) {
-  return el('div', { class: 'shell' },
+  return el('div', { class: ['shell', isSidebarCollapsed() && 'is-collapsed'] },
     sidebar(activeNav),
     el('div', { class: 'main' },
       header(activeNav),
@@ -128,13 +170,17 @@ function sidebar(activeNav) {
       el('a', {
         class: ['nav__item', activeNav === 'settings' && 'is-active'],
         href: '/settings',
+        'data-tip': t('nav.settings'),
         onclick: (e) => { e.preventDefault(); navigate('/settings'); },
       }, icon('settings', { size: 18 }), el('span', null, t('nav.settings'))),
+
+      sidebarToggle(),
 
       el('button', {
         class: 'user-chip',
         onclick: () => navigate('/settings'),
         'aria-label': state.user.name,
+        'data-tip': state.user.name,
       },
         el('span', { class: 'avatar', style: { background: state.user.avatar_color } }, initials(state.user.name)),
         el('span', { class: 'user-chip__meta truncate' },
@@ -151,15 +197,31 @@ function navLink(item, activeNav) {
   // "is there anything left?" without navigating.
   const pending = item.key === 'today' ? state.summary?.today?.pending : 0;
 
+  // The tooltip only shows while the sidebar is collapsed (see layout.css);
+  // expanded, the label is already on screen.
   return el('a', {
     class: ['nav__item', activeNav === item.key && 'is-active'],
     href: item.path,
+    'data-tip': item.label(),
     onclick: (e) => { e.preventDefault(); navigate(item.path); },
   },
     icon(item.icon, { size: 18 }),
     el('span', null, item.label()),
     pending ? el('span', { class: 'nav__badge' }, String(pending)) : null,
   );
+}
+
+function sidebarToggle() {
+  const collapsed = isSidebarCollapsed();
+  const label = collapsed ? t('nav.expand') : t('nav.collapse');
+  return el('button', {
+    class: 'nav__item sidebar__toggle',
+    type: 'button',
+    'aria-expanded': String(!collapsed),
+    'aria-label': label,
+    'data-tip': label,
+    onclick: toggleSidebar,
+  }, icon(collapsed ? 'chevronRight' : 'chevronLeft', { size: 18 }), el('span', null, label));
 }
 
 function levelCard() {
@@ -185,9 +247,7 @@ function levelCard() {
 }
 
 function tabbar(activeNav) {
-  const items = TAB_ITEMS.map((key) =>
-    NAV_ITEMS.find((n) => n.key === key)
-    || { key: 'settings', path: '/settings', icon: 'settings', label: () => t('nav.settings') });
+  const items = TAB_ITEMS.map((key) => NAV_ITEMS.find((n) => n.key === key));
 
   return el('nav', { class: 'tabbar' },
     ...items.map((item) => el('a', {
@@ -215,9 +275,9 @@ function header(activeNav) {
     : null;
 
   return el('header', { class: 'header' },
-    el('div', null,
-      el('div', { class: 'header__title' }, titles[activeNav] || t('app.name')),
-      subtitle ? el('div', { class: 'header__sub' }, subtitle) : null,
+    el('div', { class: 'header__text' },
+      el('div', { class: 'header__title truncate' }, titles[activeNav] || t('app.name')),
+      subtitle ? el('div', { class: 'header__sub truncate' }, subtitle) : null,
     ),
 
     el('div', { class: 'header__actions' },
@@ -246,8 +306,68 @@ function header(activeNav) {
           onSaved: () => render(),
         }),
       }, icon('plus', { size: 15 }), el('span', { class: 'grow' }, t('action.add'))),
+
+      accountMenu(activeNav),
     ),
   );
+}
+
+/**
+ * The avatar in the header, shown on phones only (the sidebar carries the same
+ * links on wider screens). It holds the screens that do not fit in the five
+ * tabs, plus sign-out.
+ */
+function accountMenu(activeNav) {
+  const menu = el('div', { class: 'account-menu__list hidden', role: 'menu', id: 'account-menu' },
+    el('div', { class: 'account-menu__who' },
+      el('div', { class: 'truncate', style: { 'font-weight': '600' } }, state.user.name),
+      el('div', { class: 'truncate subtle', style: { 'font-size': 'var(--text-xs)' } }, state.user.email),
+    ),
+    ...ACCOUNT_ITEMS.map((item) => el('a', {
+      class: ['account-menu__item', activeNav === item.key && 'is-active'],
+      href: item.path,
+      role: 'menuitem',
+      onclick: (e) => { e.preventDefault(); close(); navigate(item.path); },
+    }, icon(item.icon, { size: 17 }), el('span', null, item.label()))),
+    el('button', {
+      class: 'account-menu__item',
+      type: 'button',
+      role: 'menuitem',
+      onclick: async () => { close(); await signOut(); navigate('/login'); toast(t('toast.signedOut')); },
+    }, icon('logout', { size: 17 }), el('span', null, t('action.signOut'))),
+  );
+
+  const button = el('button', {
+    class: 'account-menu__button',
+    type: 'button',
+    'aria-haspopup': 'menu',
+    'aria-expanded': 'false',
+    'aria-controls': 'account-menu',
+    'aria-label': t('nav.account'),
+    onclick: () => (menu.classList.contains('hidden') ? open() : close()),
+  }, el('span', { class: 'avatar', style: { background: state.user.avatar_color } }, initials(state.user.name)));
+
+  const wrap = el('div', { class: 'account-menu' }, button, menu);
+
+  // Close on a click anywhere else or on Escape, and stop listening once the
+  // menu is shut so a closed menu costs nothing.
+  const onOutside = (e) => { if (!wrap.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === 'Escape') { close(); button.focus(); } };
+  function open() {
+    menu.classList.remove('hidden');
+    button.setAttribute('aria-expanded', 'true');
+    document.addEventListener('pointerdown', onOutside);
+    document.addEventListener('keydown', onKey);
+    menu.querySelector('.account-menu__item')?.focus();
+  }
+  function close() {
+    menu.classList.add('hidden');
+    button.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('pointerdown', onOutside);
+    document.removeEventListener('keydown', onKey);
+  }
+
+  return wrap;
 }
 
 function paletteActions() {

@@ -20,6 +20,9 @@ const en = {
   'nav.journal': 'Journal',
   'nav.achievements': 'Achievements',
   'nav.settings': 'Settings',
+  'nav.account': 'Account menu',
+  'nav.collapse': 'Collapse menu',
+  'nav.expand': 'Expand menu',
 
   'action.save': 'Save',
   'action.cancel': 'Cancel',
@@ -339,6 +342,9 @@ const uz = {
   'nav.journal': 'Kundalik',
   'nav.achievements': 'Yutuqlar',
   'nav.settings': 'Sozlamalar',
+  'nav.account': 'Hisob menyusi',
+  'nav.collapse': 'Menyuni yig‘ish',
+  'nav.expand': 'Menyuni yoyish',
 
   'action.save': 'Saqlash',
   'action.cancel': 'Bekor qilish',
@@ -658,6 +664,9 @@ const ru = {
   'nav.journal': 'Дневник',
   'nav.achievements': 'Достижения',
   'nav.settings': 'Настройки',
+  'nav.account': 'Меню аккаунта',
+  'nav.collapse': 'Свернуть меню',
+  'nav.expand': 'Развернуть меню',
 
   'action.save': 'Сохранить',
   'action.cancel': 'Отмена',

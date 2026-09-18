@@ -108,7 +108,7 @@ export function renderToday(container, { date, navigate }) {
 
     return el('section', { class: 'hero-card' },
       el('div', { class: 'hero-card__body' },
-        el('div', { class: 'row', style: { gap: 'var(--s-3)' } },
+        el('div', { class: 'row row--wrap', style: { gap: 'var(--s-2) var(--s-3)' } },
           el('h1', { class: 'hero-card__greeting' }, isToday ? greeting() : relativeDay(selected, t, state.user.locale)),
           streak.current > 0
             ? el('span', { class: 'streak-pill' }, icon('flame', { size: 15 }), t('today.streak', { count: streak.current }))
