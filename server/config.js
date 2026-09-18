@@ -57,4 +57,11 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  // Daily database backups. Off under NODE_ENV=test so a test run can never
+  // write into, or prune, the real backup folder.
+  backup: {
+    enabled: (process.env.BACKUPS || (process.env.NODE_ENV === 'test' ? 'off' : 'on')) !== 'off',
+    dir: path.resolve(ROOT, process.env.BACKUP_DIR || './data/backups'),
+    keep: Math.max(1, Math.floor(Number(process.env.BACKUP_KEEP)) || 7),
+  },
 };

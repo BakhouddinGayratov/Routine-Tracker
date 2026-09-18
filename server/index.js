@@ -2,7 +2,8 @@ import path from 'node:path';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import { config } from './config.js';
-import { purgeExpiredSessions, driverName, appliedMigrations } from './db/index.js';
+import { db, purgeExpiredSessions, driverName, appliedMigrations } from './db/index.js';
+import { scheduleBackups } from './db/backup.js';
 import { requireAuth } from './middleware/auth.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { notFound, errorHandler } from './middleware/error.js';
@@ -109,6 +110,7 @@ const server = app.listen(config.port, () => {
   // Say so when an existing database was upgraded, so an unexpected schema
   // change is visible in the log rather than silent.
   for (const name of appliedMigrations) console.log(`  migrated: ${name}`);
+  if (config.backup.enabled) scheduleBackups(db, config.backup);
   console.log('');
 });
 
