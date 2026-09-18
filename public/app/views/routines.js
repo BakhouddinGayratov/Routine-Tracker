@@ -4,7 +4,7 @@ import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state, invalidateRoutines } from '../store.js';
 import { toast, emptyState, skeletonList, confirmDialog } from '../ui.js';
-import { openRoutineForm } from './routine-form.js';
+import { openRoutineForm, repeatLabel } from './routine-form.js';
 import { formatDuration, debounce } from '../utils.js';
 
 /** Library of every routine, plus the template packs. */
@@ -146,7 +146,7 @@ export function renderRoutines(container, { navigate }) {
       el('span', { class: 'chip' },
         el('i', { class: 'chip__dot', style: { background: routine.color, color: routine.color } }),
         t(`cat.${routine.category}`)),
-      el('span', { class: 'chip' }, icon('repeat', { size: 11 }), routine.repeat_label),
+      el('span', { class: 'chip' }, icon('repeat', { size: 11 }), repeatLabel(routine)),
       goalsById.has(routine.goal_id)
         ? el('span', { class: 'chip' }, icon('target', { size: 11 }), goalsById.get(routine.goal_id).title)
         : null,

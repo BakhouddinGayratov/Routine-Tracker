@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { state } from '../store.js';
 import { emptyState } from '../ui.js';
 import { monthGrid } from '../charts.js';
-import { todayISO, formatMonth, WEEKDAYS_SHORT, pct } from '../utils.js';
+import { todayISO, formatMonth, weekdayName, pct } from '../utils.js';
 
 /** Month calendar with per-day completion, mood and quick navigation. */
 export function renderCalendar(container, { navigate }) {
@@ -76,7 +76,7 @@ export function renderCalendar(container, { navigate }) {
   const renderGrid = (data) => {
     const weekStart = state.user.week_start === 0 ? 0 : 1;
     const labels = (weekStart === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0])
-      .map((d) => WEEKDAYS_SHORT[d]);
+      .map((d) => weekdayName(d, state.user.locale));
 
     mount(gridSlot,
       monthGrid(data.days, {

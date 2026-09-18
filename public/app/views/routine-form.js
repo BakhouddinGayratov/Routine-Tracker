@@ -1,10 +1,10 @@
 import { el } from '../dom.js';
-import { t } from '../i18n.js';
+import { t, getLocale } from '../i18n.js';
 import { api, ApiError } from '../api.js';
 import { modal, toast } from '../ui.js';
 import { invalidateRoutines } from '../store.js';
 import {
-  todayISO, EMOJI_CHOICES, COLOR_CHOICES, CATEGORY_COLORS, WEEKDAYS_SHORT,
+  todayISO, formatDate, weekdayName, EMOJI_CHOICES, COLOR_CHOICES, CATEGORY_COLORS,
 } from '../utils.js';
 
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
@@ -16,10 +16,15 @@ const CATEGORIES = Object.keys(CATEGORY_COLORS);
  * that the chosen mode actually needs, so the dialog never shows a field that
  * cannot affect the result.
  *
+ * A new routine happens once, on the day it was added from. Repeating is a
+ * deliberate choice under "More options": a routine added while looking at
+ * one day should not quietly appear on every other day as well.
+ *
  * @param {object|null} routine  existing routine, or null to create
- * @param {object} options       { weekStart, onSaved }
+ * @param {object} options       { weekStart, date, onSaved } — `date` is the
+ *                               day the form was opened from (default today)
  */
-export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
+export function openRoutineForm(routine, { weekStart = 1, date, onSaved } = {}) {
   const isEdit = Boolean(routine);
 
   const draft = {
@@ -33,10 +38,10 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
     start_time: routine?.start_time || '',
     duration_min: routine?.duration_min ?? 0,
     end_time: endTimeOf(routine),
-    repeat_type: routine?.repeat_type || 'daily',
+    repeat_type: routine?.repeat_type || 'once',
     repeat_days: routine?.repeat_days || '',
     repeat_every: routine?.repeat_every || 2,
-    start_date: routine?.start_date || todayISO(),
+    start_date: routine?.start_date || date || todayISO(),
     end_date: routine?.end_date || '',
     goal_type: routine?.goal_type || 'check',
     target_value: routine?.target_value ?? 1,
@@ -76,7 +81,7 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
               el('span', null, timeSummary(draft)),
               el('span', null, t(`cat.${draft.category}`)),
               draft.duration_min ? el('span', null, `${draft.duration_min} ${t('misc.min')}`) : null,
-              el('span', null, repeatSummary(draft)),
+              el('span', null, repeatLabel(draft)),
             ),
           ),
         );
@@ -100,7 +105,7 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
                   event.currentTarget.classList.toggle('is-on');
                   refreshPreview();
                 },
-              }, WEEKDAYS_SHORT[day])),
+              }, weekdayName(day, getLocale()))),
             ),
           ));
         } else if (draft.repeat_type === 'monthly') {
@@ -253,7 +258,7 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
             el('label', { class: 'field__label', for: 'f-start' }, t('form.startDate')),
             el('input', {
               class: 'input', id: 'f-start', type: 'date', value: draft.start_date,
-              oninput: (e) => { draft.start_date = e.target.value; },
+              oninput: (e) => { draft.start_date = e.target.value; refreshPreview(); },
             }),
           ),
           el('div', { class: 'field' },
@@ -427,19 +432,25 @@ export function openRoutineForm(routine, { weekStart = 1, onSaved } = {}) {
   });
 }
 
-function repeatSummary(draft) {
-  switch (draft.repeat_type) {
+/**
+ * A routine's repeat rule in the reader's language. The server also sends a
+ * `repeat_label`, but it is English only, so the views use this instead.
+ * Empty weekday lists read as "every day", because that is how the schedule
+ * treats them.
+ */
+export function repeatLabel(routine) {
+  const locale = getLocale();
+  const days = String(routine.repeat_days || '').split(',').filter(Boolean).map(Number).sort((a, b) => a - b);
+
+  switch (routine.repeat_type) {
     case 'daily': return t('repeat.daily');
-    case 'once': return t('repeat.once');
-    case 'interval': return `${t('repeat.interval')} (${draft.repeat_every})`;
-    case 'weekly': {
-      const days = draft.repeat_days.split(',').filter(Boolean).map(Number);
-      return days.length ? days.map((d) => WEEKDAYS_SHORT[d]).join(', ') : t('repeat.weekly');
-    }
-    case 'monthly': {
-      const days = draft.repeat_days.split(',').filter(Boolean);
+    case 'once': return t('repeat.onDay', { date: formatDate(routine.start_date, { locale }) });
+    case 'interval':
+      return Number(routine.repeat_every) === 1 ? t('repeat.daily') : t('repeat.everyN', { count: routine.repeat_every });
+    case 'weekly':
+      return days.length && days.length < 7 ? days.map((d) => weekdayName(d, locale)).join(', ') : t('repeat.daily');
+    case 'monthly':
       return days.length ? `${t('repeat.monthly')}: ${days.join(', ')}` : t('repeat.monthly');
-    }
     default: return '';
   }
 }

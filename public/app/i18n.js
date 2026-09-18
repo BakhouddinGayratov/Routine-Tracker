@@ -176,6 +176,8 @@ const en = {
   'repeat.interval': 'Every N days',
   'repeat.monthly': 'Days of the month',
   'repeat.once': 'One time only',
+  'repeat.onDay': 'Only on {date}',
+  'repeat.everyN': 'Every {count} days',
 
   'goal.check': 'Simple check',
   'goal.quantity': 'Measurable amount',
@@ -493,6 +495,8 @@ const uz = {
   'repeat.interval': 'Har N kunda',
   'repeat.monthly': 'Oyning kunlarida',
   'repeat.once': 'Faqat bir marta',
+  'repeat.onDay': 'Faqat {date}',
+  'repeat.everyN': 'Har {count} kunda',
 
   'goal.check': 'Oddiy belgi',
   'goal.quantity': 'O‘lchanadigan miqdor',
@@ -810,6 +814,8 @@ const ru = {
   'repeat.interval': 'Каждые N дней',
   'repeat.monthly': 'По числам месяца',
   'repeat.once': 'Только один раз',
+  'repeat.onDay': 'Только {date}',
+  'repeat.everyN': 'Каждые {count} дн.',
 
   'goal.check': 'Простая отметка',
   'goal.quantity': 'Измеримое количество',

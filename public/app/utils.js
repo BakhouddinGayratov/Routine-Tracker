@@ -27,8 +27,27 @@ export function daysBetween(a, b) {
   return Math.round((parseISO(b) - parseISO(a)) / 86400000);
 }
 
+// Chromium lists Uzbek as a supported Intl locale but ships no Uzbek month or
+// weekday names, so Intl prints "2026 M09 20, Sun". Uzbek dates are therefore
+// spelled out by hand, in the CLDR shape ("yakshanba, 20-sentabr, 2026").
+const UZ_MONTHS = ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr'];
+const UZ_MONTHS_SHORT = ['yan', 'fev', 'mar', 'apr', 'may', 'iyn', 'iyl', 'avg', 'sen', 'okt', 'noy', 'dek'];
+const UZ_WEEKDAYS = ['yakshanba', 'dushanba', 'seshanba', 'chorshanba', 'payshanba', 'juma', 'shanba'];
+const UZ_WEEKDAYS_SHORT = ['Yak', 'Dush', 'Sesh', 'Chor', 'Pay', 'Jum', 'Shan'];
+
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 /** "Mon, 6 Sep" / "Monday, 6 September 2026" */
 export function formatDate(iso, { long = false, locale = 'en' } = {}) {
+  if (locale === 'uz') {
+    const date = parseISO(iso);
+    const day = date.getUTCDate();
+    const month = date.getUTCMonth();
+    const weekday = date.getUTCDay();
+    return long
+      ? `${capitalize(UZ_WEEKDAYS[weekday])}, ${day}-${UZ_MONTHS[month]}, ${date.getUTCFullYear()}`
+      : `${UZ_WEEKDAYS_SHORT[weekday]}, ${day}-${UZ_MONTHS_SHORT[month]}`;
+  }
   const options = long
     ? { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }
     : { weekday: 'short', day: 'numeric', month: 'short' };
@@ -40,11 +59,24 @@ export function formatDate(iso, { long = false, locale = 'en' } = {}) {
 }
 
 export function formatMonth(year, month, locale = 'en') {
+  if (locale === 'uz') return `${capitalize(UZ_MONTHS[month - 1])}, ${year}`;
   try {
     return new Intl.DateTimeFormat(intlLocale(locale), { month: 'long', year: 'numeric', timeZone: 'UTC' })
       .format(new Date(Date.UTC(year, month - 1, 12)));
   } catch {
     return `${year}-${pad(month)}`;
+  }
+}
+
+/** Short weekday name for 0 (Sunday) … 6 (Saturday), in the given locale. */
+export function weekdayName(day, locale = 'en') {
+  if (locale === 'uz') return UZ_WEEKDAYS_SHORT[day];
+  // 4 January 2026 is a Sunday, so day N of that week is weekday N.
+  try {
+    return new Intl.DateTimeFormat(intlLocale(locale), { weekday: 'short', timeZone: 'UTC' })
+      .format(new Date(Date.UTC(2026, 0, 4 + day, 12)));
+  } catch {
+    return WEEKDAYS_SHORT[day];
   }
 }
 

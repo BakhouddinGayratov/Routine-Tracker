@@ -5,7 +5,7 @@ import { api } from '../api.js';
 import { state } from '../store.js';
 import { emptyState, skeletonList } from '../ui.js';
 import { lineChart, barChart, barList, heatmap, heatmapLegend } from '../charts.js';
-import { formatDuration, pct, WEEKDAYS_SHORT, CATEGORY_COLORS } from '../utils.js';
+import { formatDuration, pct, weekdayName, CATEGORY_COLORS } from '../utils.js';
 
 const RANGES = [7, 30, 90, 365];
 
@@ -142,7 +142,7 @@ export function renderStats(container, { navigate }) {
     const items = order.map((day) => {
       const bucket = overview.weekdays[day];
       return {
-        label: WEEKDAYS_SHORT[day],
+        label: weekdayName(day, state.user.locale),
         value: bucket.rate ?? 0,
         color: bucket.rate >= 80 ? 'var(--success)' : bucket.rate >= 50 ? 'var(--accent)' : 'var(--warning)',
       };

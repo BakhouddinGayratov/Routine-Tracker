@@ -4,7 +4,7 @@ import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state, invalidateRoutines } from '../store.js';
 import { emptyState, skeletonList, progressRing, toast, confirmDialog } from '../ui.js';
-import { openRoutineForm } from './routine-form.js';
+import { openRoutineForm, repeatLabel } from './routine-form.js';
 import { formatDate, formatDuration, pct } from '../utils.js';
 
 /** A single routine: its settings, performance and recent history. */
@@ -41,7 +41,7 @@ export function renderRoutineDetail(container, { id, navigate }) {
             el('div', null,
               el('h1', { class: 'hero-card__greeting' }, routine.title),
               el('div', { class: 'hero-card__date' },
-                `${t(`cat.${routine.category}`)} · ${routine.repeat_label}`),
+                `${t(`cat.${routine.category}`)} · ${repeatLabel(routine)}`),
             ),
           ),
           routine.notes ? el('p', { class: 'hero-card__line' }, routine.notes) : null,

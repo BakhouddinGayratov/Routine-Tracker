@@ -4,10 +4,10 @@ import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state, invalidateRoutines, refreshSummary } from '../store.js';
 import { toast, emptyState, skeletonList, progressRing, celebrate, confirmDialog } from '../ui.js';
-import { openRoutineForm } from './routine-form.js';
+import { openRoutineForm, repeatLabel } from './routine-form.js';
 import {
   todayISO, addDays, formatDate, relativeDay, formatDuration, nowTime,
-  timeBucket, weekdayOf, pct, WEEKDAYS_SHORT,
+  timeBucket, weekdayOf, pct, weekdayName,
 } from '../utils.js';
 
 const BUCKET_ORDER = ['morning', 'afternoon', 'evening', 'night', 'anytime'];
@@ -137,6 +137,7 @@ export function renderToday(container, { date, navigate }) {
             class: 'btn btn--primary',
             onclick: () => openRoutineForm(null, {
               weekStart: state.user.week_start,
+              date: selected,
               onSaved: () => { invalidateRoutines(); load(); },
             }),
           }, icon('plus', { size: 16 }), t('action.add')),
@@ -212,7 +213,7 @@ export function renderToday(container, { date, navigate }) {
           onclick: () => navigate(`/day/${day.date}`),
           'aria-label': formatDate(day.date, { locale: state.user.locale }),
         },
-          el('span', { class: 'weekstrip__dow' }, WEEKDAYS_SHORT[weekdayOf(day.date)]),
+          el('span', { class: 'weekstrip__dow' }, weekdayName(weekdayOf(day.date), state.user.locale)),
           el('span', { class: 'weekstrip__num' }, Number(day.date.slice(8, 10))),
           el('span', { class: 'weekstrip__dots' },
             ...dotsFor(day).map((on) => el('i', { class: on ? 'is-on' : '' })),
@@ -242,6 +243,7 @@ export function renderToday(container, { date, navigate }) {
             class: 'btn btn--primary',
             onclick: () => openRoutineForm(null, {
               weekStart: state.user.week_start,
+              date: selected,
               onSaved: () => { invalidateRoutines(); load(); },
             }),
           }, icon('plus', { size: 16 }), t('action.add')),
@@ -312,7 +314,7 @@ export function renderToday(container, { date, navigate }) {
           }), t(`cat.${item.category}`)),
           item.duration_min ? el('span', null, icon('clock', { size: 12 }), formatDuration(item.duration_min)) : null,
           item.priority === 'high' ? el('span', { class: 'badge badge--warning' }, t('priority.high')) : null,
-          item.repeat_label ? el('span', null, icon('repeat', { size: 12 }), item.repeat_label) : null,
+          el('span', null, icon('repeat', { size: 12 }), repeatLabel(item)),
           isSkipped ? el('span', { class: 'badge badge--muted' }, t('action.skip')) : null,
         ),
       ),

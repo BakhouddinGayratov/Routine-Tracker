@@ -242,6 +242,7 @@ function header(activeNav) {
         class: 'btn btn--primary btn--sm',
         onclick: () => openRoutineForm(null, {
           weekStart: state.user.week_start,
+          date: currentDate(),
           onSaved: () => render(),
         }),
       }, icon('plus', { size: 15 }), el('span', { class: 'grow' }, t('action.add'))),
@@ -255,7 +256,7 @@ function paletteActions() {
       label: t('action.add'),
       icon: 'plus',
       hint: 'N',
-      run: () => openRoutineForm(null, { weekStart: state.user.week_start, onSaved: () => render() }),
+      run: () => openRoutineForm(null, { weekStart: state.user.week_start, date: currentDate(), onSaved: () => render() }),
     },
     { label: t('settings.theme'), icon: 'moon', run: toggleTheme },
     { label: t('action.export'), icon: 'download', run: () => { window.location.href = '/api/export'; } },
@@ -358,7 +359,7 @@ document.addEventListener('keydown', (event) => {
   if (typing || event.metaKey || event.ctrlKey || event.altKey || !state.user) return;
 
   const shortcuts = {
-    n: () => openRoutineForm(null, { weekStart: state.user.week_start, onSaved: () => render() }),
+    n: () => openRoutineForm(null, { weekStart: state.user.week_start, date: currentDate(), onSaved: () => render() }),
     t: () => navigate('/today'),
     r: () => navigate('/routines'),
     g: () => navigate('/goals'),
