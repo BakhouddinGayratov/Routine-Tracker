@@ -3,6 +3,7 @@ import { icon } from './icons.js';
 import { t, getLocale } from './i18n.js';
 import { state, bootstrap, subscribe, signOut, updateProfile, refreshSummary } from './store.js';
 import { toast } from './ui.js';
+import { api } from './api.js';
 import { openPalette } from './palette.js';
 import { startReminders, stopReminders } from './reminders.js';
 import { initials, todayISO, relativeDay, formatDate } from './utils.js';
@@ -379,7 +380,11 @@ function paletteActions() {
       run: () => openRoutineForm(null, { weekStart: state.user.week_start, date: currentDate(), onSaved: () => render() }),
     },
     { label: t('settings.theme'), icon: 'moon', run: toggleTheme },
-    { label: t('action.export'), icon: 'download', run: () => { window.location.href = '/api/export'; } },
+    {
+      label: t('action.export'),
+      icon: 'download',
+      run: () => api.downloadExport('json').catch((err) => toast(err.message, 'error')),
+    },
     {
       label: t('action.signOut'),
       icon: 'logout',

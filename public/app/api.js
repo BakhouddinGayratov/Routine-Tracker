@@ -4,7 +4,12 @@
  * One place that knows about transport concerns: JSON encoding, the auth
  * token, and turning a non-2xx response into a typed error the views can
  * render (including per-field messages from the server's validator).
+ *
+ * Every URL is prefixed with apiBase(): empty on the web, the server's origin
+ * inside the iOS app, where the page itself is loaded from capacitor://localhost.
  */
+import { apiBase } from './config.js';
+import { el } from './dom.js';
 
 const TOKEN_KEY = 'rt.token';
 
@@ -36,7 +41,7 @@ async function request(method, path, body, options = {}) {
 
   let res;
   try {
-    res = await fetch(`/api${path}`, {
+    res = await fetch(`${apiBase()}/api${path}`, {
       method,
       headers,
       credentials: 'same-origin',
@@ -118,6 +123,37 @@ export const api = {
   templates: () => get('/templates'),
   applyTemplate: (id) => post(`/templates/${id}/apply`),
   search: (q, options) => get(`/search?q=${encodeURIComponent(q)}`, options),
-  exportUrl: '/api/export',
-  exportCsvUrl: '/api/export.csv',
+  downloadExport,
 };
+
+/**
+ * Download the JSON or CSV export.
+ *
+ * A plain link to /api/export only works where the session cookie rides
+ * along, which is the web. The app has no cookie — it authenticates with the
+ * bearer token — so the file is fetched with that token and handed to the
+ * browser as a blob, which works in both places.
+ */
+async function downloadExport(format = 'json') {
+  const path = format === 'csv' ? '/export.csv' : '/export';
+  const headers = {};
+  if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
+
+  let res;
+  try {
+    res = await fetch(`${apiBase()}/api${path}`, { headers, credentials: 'same-origin' });
+  } catch {
+    throw new ApiError(0, 'Cannot reach the server. Check your connection.');
+  }
+  if (!res.ok) throw new ApiError(res.status, `Export failed (${res.status})`);
+
+  const disposition = res.headers.get('content-disposition') || '';
+  const name = /filename="([^"]+)"/.exec(disposition)?.[1] || `routine-tracker.${format}`;
+  const url = URL.createObjectURL(await res.blob());
+  const link = el('a', { href: url, download: name, style: { display: 'none' } });
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  // Give the browser time to start the download before the blob goes away.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+}

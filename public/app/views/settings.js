@@ -303,10 +303,8 @@ export function renderSettings(container, { navigate }) {
         el('div', { class: 'settings-row__desc' }, t('settings.exportDesc')),
       ),
       el('div', { class: 'settings-row__control row' },
-        el('a', { class: 'btn btn--secondary btn--sm', href: api.exportUrl, download: '' },
-          icon('download', { size: 14 }), t('settings.exportJson')),
-        el('a', { class: 'btn btn--secondary btn--sm', href: api.exportCsvUrl, download: '' },
-          icon('download', { size: 14 }), t('settings.exportCsv')),
+        exportButton('json', t('settings.exportJson')),
+        exportButton('csv', t('settings.exportCsv')),
       ),
     ),
     el('div', { class: 'settings-row' },
@@ -394,4 +392,26 @@ function describeAgent(agent) {
     : /Linux/.test(agent) ? 'Linux'
     : '';
   return os ? `${browser} · ${os}` : browser;
+}
+
+/**
+ * Export control. It fetches the file with the session token rather than
+ * linking to it, so it works in the iOS app too (see api.downloadExport).
+ */
+function exportButton(format, label) {
+  return el('button', {
+    class: 'btn btn--secondary btn--sm',
+    type: 'button',
+    onclick: async (event) => {
+      const button = event.currentTarget;
+      button.setAttribute('aria-busy', 'true');
+      try {
+        await api.downloadExport(format);
+      } catch (err) {
+        toast(err.message || t('error.generic'), 'error');
+      } finally {
+        button.removeAttribute('aria-busy');
+      }
+    },
+  }, icon('download', { size: 14 }), label);
 }

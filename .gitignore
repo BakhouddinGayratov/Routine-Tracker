@@ -8,3 +8,6 @@ data/
 .DS_Store
 npm-debug.log*
 coverage/
+
+# iOS archives and exported .ipa files (see IOS_BUILD.md)
+build/

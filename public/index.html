@@ -3,6 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <!-- The server sends a stricter CSP header on the web; both apply there, so
+       this loosens nothing. It exists for the iOS app, where the page is loaded
+       from the app bundle and no header arrives: scripts stay 'self'-only and
+       requests may only go to an HTTPS API (or a local dev server). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https: http://localhost:* http://127.0.0.1:* http://*.local:*; base-uri 'self'; form-action 'self'" />
   <title>Routine Tracker — build the days you want</title>
   <meta name="description" content="Plan your routines by the hour, tick them off as you go, and watch your streaks, stats and habits grow." />
   <meta name="theme-color" content="#0b0d14" />

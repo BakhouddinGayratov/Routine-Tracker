@@ -5,6 +5,7 @@ import { signIn, signUp } from '../store.js';
 import { toast } from '../ui.js';
 import { passwordScore } from '../utils.js';
 import { ApiError } from '../api.js';
+import { isNativeApp, apiBase, saveApiUrl } from '../config.js';
 
 /**
  * Sign in / sign up.
@@ -178,6 +179,39 @@ export function renderAuth(container, { mode = 'login', navigate }) {
         ),
       ),
       form,
+      serverField(),
+    );
+  };
+
+  /**
+   * Inside the iOS app the API is on another host, so the sign-in screen is
+   * where its address is set (see config.js). The web never shows this.
+   */
+  const serverField = () => {
+    if (!isNativeApp()) return null;
+    const current = apiBase();
+    const input = el('input', {
+      class: 'input', id: 'f-server', type: 'url', inputmode: 'url', autocomplete: 'url',
+      autocapitalize: 'off', spellcheck: 'false',
+      placeholder: 'https://routine.example.com', value: current,
+    });
+    const save = el('button', {
+      class: 'btn btn--secondary', type: 'button',
+      onclick: () => {
+        try {
+          const origin = saveApiUrl(input.value);
+          toast(origin ? t('auth.serverSaved') : t('auth.serverCleared'));
+          render();
+        } catch (err) {
+          toast(err.code === 'insecure' ? t('auth.serverInsecure') : t('auth.serverInvalid'), 'error');
+        }
+      },
+    }, t('action.save'));
+
+    return el('div', { class: 'field', style: { width: 'min(100%, 400px)', 'margin-top': 'var(--s-6)' } },
+      el('label', { class: 'field__label', for: 'f-server' }, t('auth.server')),
+      el('div', { class: 'row', style: { gap: 'var(--s-2)' } }, input, save),
+      el('div', { class: 'field__hint' }, current ? t('auth.serverCurrent', { url: current }) : t('auth.serverMissing')),
     );
   };
 

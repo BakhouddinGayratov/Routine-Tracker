@@ -53,7 +53,11 @@ export const config = {
   databaseDriver: process.env.DATABASE_DRIVER || 'auto',
   jwtSecret: resolveJwtSecret(),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '30d',
-  corsOrigins: (process.env.CORS_ORIGINS || '')
+  // Origins allowed to call the API cross-origin. The default admits only the
+  // iOS app (Capacitor serves it from capacitor://localhost). No web page can
+  // present that origin, and the app authenticates with a bearer token, so
+  // this opens nothing to the web. Setting CORS_ORIGINS replaces the list.
+  corsOrigins: (process.env.CORS_ORIGINS ?? 'capacitor://localhost')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),

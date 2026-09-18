@@ -1,0 +1,12 @@
+{
+  "appId": "uz.routine.tracker",
+  "appName": "Routine Tracker",
+  "webDir": "public",
+  "server": {
+    "iosScheme": "capacitor"
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0b0d14"
+  }
+}

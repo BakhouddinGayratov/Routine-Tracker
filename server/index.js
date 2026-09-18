@@ -57,6 +57,8 @@ if (config.corsOrigins.length) {
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
+        // Lets the app read the export's file name (api.downloadExport).
+        'Access-Control-Expose-Headers': 'Content-Disposition',
         Vary: 'Origin',
       });
     }
