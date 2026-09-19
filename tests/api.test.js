@@ -336,6 +336,7 @@ await test('a goal reports the progress of its routines', async () => {
   const goal = r.body.goals.find((g) => g.id === goalId);
   assert.equal(goal.progress.routines, 1);
   assert.ok(goal.progress.due > 0);
+  assert.equal(goal.progress.series.length, 30, 'one rate per day of the window');
   assert.ok(goal.routines.some((x) => x.id === routineId));
 });
 

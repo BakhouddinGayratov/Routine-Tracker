@@ -34,7 +34,7 @@ function ownedGoal(userId, id) {
  * UI should not show a fresh goal as a failure.
  */
 function progressFor(routines, logs, from, to) {
-  if (!routines.length) return { routines: 0, due: 0, done: 0, completion: null };
+  if (!routines.length) return { routines: 0, due: 0, done: 0, completion: null, series: [] };
 
   const series = buildDailySeries(routines, logs, from, to);
   const due = series.reduce((sum, day) => sum + day.due, 0);
@@ -45,6 +45,9 @@ function progressFor(routines, logs, from, to) {
     due,
     done: round(done),
     completion: due === 0 ? null : round((done / due) * 100),
+    // One completion rate per day of the window, oldest first, for the card's
+    // trend line; null on days with nothing scheduled for this goal.
+    series: series.map((day) => day.rate),
   };
 }
 

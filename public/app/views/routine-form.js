@@ -21,15 +21,16 @@ const CATEGORIES = Object.keys(CATEGORY_COLORS);
  * one day should not quietly appear on every other day as well.
  *
  * @param {object|null} routine  existing routine, or null to create
- * @param {object} options       { weekStart, date, onSaved } — `date` is the
- *                               day the form was opened from (default today)
+ * @param {object} options       { weekStart, date, goalId, onSaved } — `date` is
+ *                               the day the form was opened from (default
+ *                               today); `goalId` preselects a goal
  */
-export function openRoutineForm(routine, { weekStart = 1, date, onSaved } = {}) {
+export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, onSaved } = {}) {
   const isEdit = Boolean(routine);
 
   const draft = {
     title: routine?.title || '',
-    goal_id: routine?.goal_id ?? null,
+    goal_id: routine?.goal_id ?? goalId,
     notes: routine?.notes || '',
     icon: routine?.icon || '✅',
     color: routine?.color || '#6366f1',

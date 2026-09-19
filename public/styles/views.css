@@ -683,3 +683,10 @@
   .settings-row { flex-direction: column; align-items: stretch; gap: var(--s-3); }
   .settings-row__control { width: 100%; }
 }
+
+/* --- Goals -------------------------------------------------------------- */
+
+/* The 30-day trend under a goal's progress bar (UI-08). */
+.goal-trend { margin-top: var(--s-3); height: 34px; color: var(--accent); }
+.goal-trend svg { display: block; }
+.routine-card .badge { flex: none; display: inline-flex; align-items: center; gap: 4px; }

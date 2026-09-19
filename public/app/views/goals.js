@@ -3,7 +3,9 @@ import { icon } from '../icons.js';
 import { t, getLocale } from '../i18n.js';
 import { api, ApiError } from '../api.js';
 import { modal, toast, emptyState, skeletonList, confirmDialog } from '../ui.js';
-import { invalidateRoutines } from '../store.js';
+import { state, invalidateRoutines } from '../store.js';
+import { sparkline } from '../charts.js';
+import { openRoutineForm } from './routine-form.js';
 import { formatDate, daysBetween, todayISO, EMOJI_CHOICES, COLOR_CHOICES } from '../utils.js';
 
 const GOAL_EMOJI = ['🎯', '🏆', '🚀', '📚', '💪', '🧠', '💰', '🌱', '❤️', '🎨', '🧘', '⛰️'];
@@ -117,10 +119,11 @@ export function renderGoals(container, { navigate }) {
           el('div', { class: 'routine-card__title' }, goal.title),
           el('div', { class: 'routine__meta' },
             el('span', null, t('goals.routineCount', { count: progress.routines })),
-            goal.target_date ? el('span', null, icon('calendar', { size: 12 }), deadlineLabel(goal.target_date)) : null,
           ),
         ),
-        done ? el('span', { class: 'badge badge--success' }, t('goals.statusDone')) : null,
+        done
+          ? el('span', { class: 'badge badge--success' }, t('goals.statusDone'))
+          : goal.target_date ? deadlineBadge(goal.target_date) : null,
       ),
 
       goal.description ? el('p', { class: 'routine-card__notes' }, goal.description) : null,
@@ -137,6 +140,7 @@ export function renderGoals(container, { navigate }) {
             el('div', { class: ['bar', progress.completion >= 80 && 'bar--success'] },
               el('div', { class: 'bar__fill', style: { width: `${Math.min(100, progress.completion)}%` } }),
             ),
+            trendLine(progress.series),
           ),
 
       goal.routines.length
@@ -155,8 +159,12 @@ export function renderGoals(container, { navigate }) {
       el('div', { class: 'routine-card__foot' },
         el('button', {
           class: 'btn btn--ghost btn--sm',
-          onclick: () => navigate('/routines'),
-        }, icon('routines', { size: 13 }), t('nav.routines')),
+          onclick: () => openRoutineForm(null, {
+            weekStart: state.user.week_start,
+            goalId: goal.id,
+            onSaved: () => { invalidateRoutines(); reload(); },
+          }),
+        }, icon('plus', { size: 13 }), t('goals.addRoutine')),
 
         el('div', { class: 'row', style: { gap: '2px' } },
           el('button', {
@@ -201,12 +209,32 @@ export function renderGoals(container, { navigate }) {
   load();
 }
 
-/** "in 12 days" / "3 days ago" — a deadline only helps if it reads as one. */
-function deadlineLabel(date) {
+/**
+ * The deadline as a badge whose colour says how close it is: overdue in red,
+ * the last week in amber, further out in grey. A date alone has to be worked
+ * out; "in 5 days" in amber does not.
+ */
+function deadlineBadge(date) {
   const days = daysBetween(todayISO(), date);
-  if (days === 0) return t('goals.dueToday');
-  if (days > 0) return t('goals.dueIn', { count: days });
-  return formatDate(date, { locale: getLocale() });
+  const tone = days < 0 ? 'danger' : days <= 7 ? 'warning' : 'muted';
+  const label = days < 0
+    ? t('goals.overdue', { count: -days })
+    : days === 0 ? t('goals.dueToday') : t('goals.dueIn', { count: days });
+  return el('span', {
+    class: `badge badge--${tone}`,
+    title: formatDate(date, { long: true, locale: getLocale() }),
+  }, icon('calendar', { size: 11 }), label);
+}
+
+/**
+ * The last 30 days as a line, drawn only from days that had something
+ * scheduled — rest days are not zeros. Needs two points to say anything.
+ */
+function trendLine(series = []) {
+  const values = series.filter((rate) => rate !== null);
+  if (values.length < 2) return null;
+  return el('div', { class: 'goal-trend', title: t('goals.trend') },
+    sparkline(values, { width: 240, height: 34, max: 100, fluid: true }));
 }
 
 /**

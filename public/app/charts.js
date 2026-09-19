@@ -299,15 +299,24 @@ export function monthGrid(days, { weekStart = 1, today, locale = 'en', onSelect,
 }
 
 /** Sparkline for a single routine's recent history. */
-export function sparkline(values, { width = 120, height = 30, color = 'var(--accent)' } = {}) {
+/**
+ * A small trend line. `max` fixes the scale (100 for percentages) so two
+ * sparklines side by side compare honestly; without it the line fills its
+ * own height. `fluid` stretches it to the container's width — safe here
+ * because a sparkline has no text to distort, and the stroke keeps its width.
+ */
+export function sparkline(values, { width = 120, height = 30, color = 'var(--accent)', max, fluid = false } = {}) {
   if (values.length < 2) return null;
-  const max = Math.max(1, ...values);
+  const top = max ?? Math.max(1, ...values);
   const step = width / (values.length - 1);
-  const points = values.map((v, i) => `${i * step},${height - (v / max) * (height - 4) - 2}`).join(' ');
-  return el('svg', { class: 'chart', width, height, viewBox: `0 0 ${width} ${height}` },
+  const points = values.map((v, i) => `${i * step},${height - (Math.min(v, top) / top) * (height - 4) - 2}`).join(' ');
+  return el('svg', {
+    class: 'chart', width: fluid ? '100%' : width, height, viewBox: `0 0 ${width} ${height}`,
+    preserveAspectRatio: fluid ? 'none' : 'xMidYMid meet', 'aria-hidden': 'true',
+  },
     el('polyline', {
       points, fill: 'none', stroke: color, 'stroke-width': 2,
-      'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke',
     }),
   );
 }

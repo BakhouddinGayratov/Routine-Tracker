@@ -165,6 +165,9 @@ const en = {
   'goals.deleteWarn': 'The routines stay; they simply stop pointing at this goal.',
   'goals.dueToday': 'Due today',
   'goals.dueIn': 'in {count} days',
+  'goals.overdue': '{count} days overdue',
+  'goals.addRoutine': 'Add routine',
+  'goals.trend': 'Daily completion over the last 30 days',
 
   'form.title': 'Title',
   'form.titlePlaceholder': 'e.g. Morning run',
@@ -514,6 +517,9 @@ const uz = {
   'goals.deleteWarn': 'Rejimlar saqlanib qoladi — faqat bu maqsadga bogʻlanmay qoʻyadi.',
   'goals.dueToday': 'Bugun',
   'goals.dueIn': '{count} kundan keyin',
+  'goals.overdue': '{count} kun kechikdi',
+  'goals.addRoutine': 'Rejim qo‘shish',
+  'goals.trend': 'Oxirgi 30 kundagi kunlik bajarilish',
 
   'form.title': 'Nomi',
   'form.titlePlaceholder': 'masalan, Ertalabki yugurish',
@@ -863,6 +869,9 @@ const ru = {
   'goals.deleteWarn': 'Рутины останутся — они просто перестанут относиться к этой цели.',
   'goals.dueToday': 'Сегодня',
   'goals.dueIn': 'через {count} дн.',
+  'goals.overdue': 'Просрочено на {count} дн.',
+  'goals.addRoutine': 'Добавить рутину',
+  'goals.trend': 'Ежедневное выполнение за последние 30 дней',
 
   'form.title': 'Название',
   'form.titlePlaceholder': 'например, Утренняя пробежка',
