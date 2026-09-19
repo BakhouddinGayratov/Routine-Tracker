@@ -250,7 +250,18 @@ export function heatmapLegend(lessLabel = 'Less', moreLabel = 'More') {
 }
 
 /** Month grid used by the calendar view. */
-export function monthGrid(days, { weekStart = 1, today, locale = 'en', onSelect, dayLabels }) {
+/**
+ * How a day measured up, against the user's own daily goal (Settings, %)
+ * rather than fixed thresholds: 'met' at or above the goal, 'part' at half
+ * of it or more, 'low' below that. Exported so the legend uses the same rule.
+ */
+export function dayTier(rate, goal = 80) {
+  if (rate >= goal) return 'met';
+  if (rate >= goal / 2) return 'part';
+  return 'low';
+}
+
+export function monthGrid(days, { weekStart = 1, today, locale = 'en', onSelect, dayLabels, goal = 80 }) {
   if (!days.length) return null;
 
   const lead = (weekdayOf(days[0].date) - weekStart + 7) % 7;
@@ -279,13 +290,8 @@ export function monthGrid(days, { weekStart = 1, today, locale = 'en', onSelect,
         day.mood ? el('div', { class: 'calendar__mood' }, ['😞', '😕', '😐', '🙂', '😄'][day.mood - 1]) : null,
         showProgress ? el('div', { class: 'calendar__ratio' }, `${Math.round(day.done)}/${day.due}`) : null,
         showProgress
-          ? el('div', { class: 'calendar__meter' },
-              el('i', {
-                style: {
-                  width: `${Math.min(100, rate)}%`,
-                  background: rate >= 100 ? 'var(--success)' : rate >= 50 ? 'var(--accent)' : 'var(--warning)',
-                },
-              }))
+          ? el('div', { class: `calendar__meter is-${dayTier(rate, goal)}` },
+              el('i', { style: { width: `${Math.min(100, rate)}%` } }))
           : null,
       );
     }),

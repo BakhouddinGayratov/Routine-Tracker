@@ -226,7 +226,10 @@ const en = {
 
   'calendar.title': 'Calendar',
   'calendar.sub': 'Every day you tracked, at a glance.',
-  'calendar.legend': 'The bar under each day shows how much of it you completed.',
+  'calendar.tierMet': 'Daily goal met (≥ {goal}%)',
+  'calendar.tierPart': 'Halfway there ({half}–{goal}%)',
+  'calendar.tierLow': 'Below {half}%',
+  'calendar.moodHint': 'mood from your journal',
 
   'stats.title': 'Statistics',
   'stats.sub': 'What the last {days} days actually looked like.',
@@ -572,7 +575,10 @@ const uz = {
 
   'calendar.title': 'Kalendar',
   'calendar.sub': 'Kuzatilgan har bir kun bir qarashda.',
-  'calendar.legend': 'Har kun ostidagi chiziq o‘sha kun qancha bajarilganini ko‘rsatadi.',
+  'calendar.tierMet': 'Kunlik maqsadga yetildi (≥ {goal}%)',
+  'calendar.tierPart': 'Yarmidan ko‘pi ({half}–{goal}%)',
+  'calendar.tierLow': '{half}% dan kam',
+  'calendar.moodHint': 'kundalikdagi kayfiyat',
 
   'stats.title': 'Statistika',
   'stats.sub': 'So‘nggi {days} kun aslida qanday o‘tgani.',
@@ -918,7 +924,10 @@ const ru = {
 
   'calendar.title': 'Календарь',
   'calendar.sub': 'Каждый отслеженный день с одного взгляда.',
-  'calendar.legend': 'Полоска под каждым днём показывает, сколько из него выполнено.',
+  'calendar.tierMet': 'Дневная цель выполнена (≥ {goal}%)',
+  'calendar.tierPart': 'Больше половины ({half}–{goal}%)',
+  'calendar.tierLow': 'Меньше {half}%',
+  'calendar.moodHint': 'настроение из дневника',
 
   'stats.title': 'Статистика',
   'stats.sub': 'Как на самом деле прошли последние {days} дней.',

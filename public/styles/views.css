@@ -441,15 +441,39 @@
 .calendar__day.is-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .calendar__day.is-future { opacity: 0.55; }
 .calendar__num { font-size: var(--text-sm); font-weight: 620; font-variant-numeric: tabular-nums; }
-.calendar__mood { position: absolute; top: 6px; right: 7px; font-size: 12px; }
-.calendar__ratio { margin-top: auto; font-size: var(--text-xs); color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
-.calendar__meter { height: 4px; border-radius: var(--r-full); background: var(--surface-3); overflow: hidden; }
-.calendar__meter i { display: block; height: 100%; border-radius: inherit; background: var(--success); }
+.calendar__mood { position: absolute; top: 5px; right: 6px; font-size: 15px; line-height: 1; }
+/* The count is the day's headline number, so it reads at body weight rather
+   than as a faint caption. */
+.calendar__ratio { margin-top: auto; font-size: var(--text-sm); font-weight: 620; color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+.calendar__meter { height: 5px; border-radius: var(--r-full); background: var(--surface-3); overflow: hidden; }
+.calendar__meter i { display: block; height: 100%; border-radius: inherit; }
+.calendar__meter.is-met i, .calendar-legend__swatch.is-met { background: var(--success); }
+.calendar__meter.is-part i, .calendar-legend__swatch.is-part { background: var(--accent); }
+.calendar__meter.is-low i, .calendar-legend__swatch.is-low { background: var(--warning); }
+
+.calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-5);
+  margin-top: var(--s-4);
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+.calendar-legend__item { display: inline-flex; align-items: center; gap: var(--s-2); }
+.calendar-legend__swatch { width: 18px; height: 5px; border-radius: var(--r-full); flex: none; }
+
+/* A fixed-width month title keeps the arrows still while paging months. */
+.calendar-nav { flex-wrap: wrap; }
+.calendar-nav__title { min-width: 190px; text-align: center; }
 
 @media (max-width: 640px) {
   .calendar { gap: 4px; }
   .calendar__day { min-height: 0; aspect-ratio: 1 / 1; padding: 4px; gap: 4px; }
   .calendar__ratio { display: none; }
+  /* In a ~44px square the mood would sit on the date; tuck it in the corner. */
+  .calendar__mood { top: auto; bottom: 7px; right: 3px; font-size: 11px; }
+  .calendar-nav__title { min-width: 0; flex: 1; }
+  .calendar-nav > .row:first-child { flex: 1; min-width: 0; }
 }
 
 /* --- Journal ------------------------------------------------------------- */

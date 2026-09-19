@@ -4,7 +4,7 @@ import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state } from '../store.js';
 import { emptyState } from '../ui.js';
-import { monthGrid } from '../charts.js';
+import { monthGrid, dayTier } from '../charts.js';
 import { todayISO, formatMonth, weekdayName, pct } from '../utils.js';
 
 /** Month calendar with per-day completion, mood and quick navigation. */
@@ -27,7 +27,7 @@ export function renderCalendar(container, { navigate }) {
     }
   };
 
-  const header = () => el('div', { class: 'section__head' },
+  const header = () => el('div', { class: 'section__head calendar-nav' },
     el('div', { class: 'row' },
       el('button', {
         class: 'btn btn--icon', 'aria-label': 'Previous month',
@@ -38,7 +38,7 @@ export function renderCalendar(container, { navigate }) {
           load();
         },
       }, icon('chevronLeft', { size: 17 })),
-      el('div', { class: 'section__title', style: { 'min-width': '190px', 'text-align': 'center' } },
+      el('div', { class: 'section__title calendar-nav__title' },
         formatMonth(year, month, state.user.locale)),
       el('button', {
         class: 'btn btn--icon', 'aria-label': 'Next month',
@@ -73,6 +73,22 @@ export function renderCalendar(container, { navigate }) {
     );
   };
 
+  const dailyGoal = () => Number(state.user.daily_goal) || 80;
+
+  /** What the bar colours mean, with the user's own goal in the numbers. */
+  const legend = () => {
+    const goal = dailyGoal();
+    const half = Math.round(goal / 2);
+    const item = (tier, text) => el('span', { class: 'calendar-legend__item' },
+      el('i', { class: `calendar-legend__swatch is-${tier}`, 'aria-hidden': 'true' }), text);
+    return el('div', { class: 'calendar-legend' },
+      item(dayTier(goal, goal), t('calendar.tierMet', { goal })),
+      item(dayTier(half, goal), t('calendar.tierPart', { half, goal })),
+      item(dayTier(0, goal), t('calendar.tierLow', { half })),
+      el('span', { class: 'calendar-legend__item' }, '🙂', t('calendar.moodHint')),
+    );
+  };
+
   const renderGrid = (data) => {
     const weekStart = state.user.week_start === 0 ? 0 : 1;
     const labels = (weekStart === 0 ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0])
@@ -84,10 +100,10 @@ export function renderCalendar(container, { navigate }) {
         today: data.today,
         locale: state.user.locale,
         dayLabels: labels,
+        goal: dailyGoal(),
         onSelect: (date) => navigate(`/day/${date}`),
       }),
-      el('p', { class: 'subtle', style: { 'font-size': 'var(--text-xs)', 'margin-top': 'var(--s-4)' } },
-        t('calendar.legend')),
+      legend(),
     );
   };
 
