@@ -74,14 +74,18 @@ function assertCoherent(data) {
   }
 }
 
+/**
+ * The library, in the user's own order (drag-and-drop on the Routines page
+ * writes sort_order). It used to sort by start time first, which made
+ * sort_order a mere tie-break and any reordering invisible. The day view
+ * has its own endpoint and stays in clock order.
+ */
 routinesRouter.get('/', asyncHandler(async (req, res) => {
   const includeArchived = req.query.archived === 'all' || req.query.archived === '1';
   const rows = db.prepare(
     `SELECT * FROM routines
      WHERE user_id = ? ${includeArchived ? '' : 'AND archived = 0'}
-     ORDER BY archived ASC,
-              CASE WHEN start_time IS NULL THEN 1 ELSE 0 END,
-              start_time ASC, sort_order ASC, id ASC`,
+     ORDER BY archived ASC, sort_order ASC, id ASC`,
   ).all(req.user.id);
 
   res.json({ routines: rows.map(decorate), categories: CATEGORIES });

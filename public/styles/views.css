@@ -690,3 +690,28 @@
 .goal-trend { margin-top: var(--s-3); height: 34px; color: var(--accent); }
 .goal-trend svg { display: block; }
 .routine-card .badge { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+
+/* --- Routine reordering (UI-09) ------------------------------------------ */
+
+.reorder-hint { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); font-size: var(--text-sm); }
+.drag-handle {
+  display: grid;
+  place-items: center;
+  width: 28px; height: 40px;
+  margin-left: calc(-1 * var(--s-2));
+  flex: none;
+  border-radius: var(--r-sm);
+  color: var(--fg-subtle);
+  cursor: grab;
+  /* Without this a touch drag would scroll the page instead of moving the card. */
+  touch-action: none;
+}
+.drag-handle:hover, .drag-handle:focus-visible { color: var(--fg); background: var(--surface-hover); }
+.drag-handle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.routine-card.is-dragging {
+  cursor: grabbing;
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+  opacity: 0.9;
+  transform: none;
+}

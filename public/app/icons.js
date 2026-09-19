@@ -45,6 +45,7 @@ const PATHS = {
   zap: 'M13 2L3 14h9l-1 8 10-12h-9l1-8z',
   book: 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z',
   layers: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
+  grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
 };
 
 export function icon(name, { size = 18, stroke = 2, class: cls = '' } = {}) {

@@ -310,6 +310,31 @@ await test('an unknown template returns 404', async () => {
 
 let goalId = null;
 
+await test("routines can be put in the user's own order", async () => {
+  const before = await api('GET', '/api/routines');
+  const ids = before.body.routines.map((r) => r.id);
+  const reversed = [...ids].reverse();
+  const r = await api('POST', '/api/routines/reorder', { ids: reversed });
+  assert.equal(r.status, 200);
+  const after = await api('GET', '/api/routines');
+  assert.deepEqual(after.body.routines.map((x) => x.id), reversed);
+});
+
+await test('reordering ignores routines that belong to someone else', async () => {
+  const other = await api('POST', '/api/auth/register', { name: 'Other', email: `other${Date.now()}@example.com`, password: 'goodpass123' }, { noAuth: true });
+  const theirs = await fetch(`${base}/api/routines`, { headers: { Authorization: `Bearer ${other.body.token}` } }).then((x) => x.json());
+  const theirId = theirs.routines[0].id;
+  const before = theirs.routines.find((x) => x.id === theirId).sort_order;
+  await api('POST', '/api/routines/reorder', { ids: [theirId] });
+  const check = await fetch(`${base}/api/routines`, { headers: { Authorization: `Bearer ${other.body.token}` } }).then((x) => x.json());
+  assert.equal(check.routines.find((x) => x.id === theirId).sort_order, before);
+});
+
+await test('a reorder request without ids is rejected', async () => {
+  const r = await api('POST', '/api/routines/reorder', { ids: [] });
+  assert.equal(r.status, 400);
+});
+
 await test('a goal can be created', async () => {
   const r = await api('POST', '/api/goals', { title: 'Run a half marathon', target_date: '2027-01-01' });
   assert.equal(r.status, 201);

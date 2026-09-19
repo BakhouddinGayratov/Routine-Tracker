@@ -120,14 +120,105 @@ export function renderRoutines(container, { navigate }) {
       })));
       return;
     }
-    mount(listSlot, el('div', { class: 'grid grid--auto' }, ...items.map(routineCard)));
+    const reorderable = canReorder();
+    mount(listSlot,
+      reorderable ? el('p', { class: 'subtle reorder-hint' }, icon('grip', { size: 14, stroke: 3 }), t('routines.dragHint')) : null,
+      el('div', { class: 'grid grid--auto' }, ...items.map((routine) => routineCard(routine, reorderable))),
+    );
   };
 
-  const routineCard = (routine) => el('article', {
+  // --- Reordering (UI-09) --------------------------------------------------
+
+  // Only the unfiltered active list can be reordered: dragging within a
+  // search result or one category would have to guess where the hidden
+  // routines go. The server stores the result in sort_order.
+  const canReorder = () => filter === 'active' && !query && category === 'all';
+
+  /** Persist the grid's current order; on failure, reload the true order. */
+  const saveOrder = async (grid) => {
+    const ids = [...grid.children].map((card) => Number(card.dataset.id));
+    const byId = new Map(routines.map((r) => [r.id, r]));
+    routines = [...ids.map((id) => byId.get(id)), ...routines.filter((r) => !ids.includes(r.id))];
+    try {
+      await api.reorderRoutines(ids);
+      invalidateRoutines();
+    } catch (err) {
+      toast(err.message || t('error.generic'), 'error');
+      reload();
+    }
+  };
+
+  /**
+   * Drag by the handle with a mouse, a finger or a pen (Pointer Events, so it
+   * works on phones where HTML5 drag-and-drop does not). The card moves in
+   * the DOM as the pointer crosses others; the order is saved on release.
+   *
+   * The listeners sit on the document, not the handle: moving the card in the
+   * DOM releases any pointer capture on its handle, after which a handle-only
+   * listener never hears the release and the drag never ends.
+   */
+  const startDrag = (event, card) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    const pointerId = event.pointerId;
+    const grid = card.parentElement;
+    const startOrder = [...grid.children].map((c) => c.dataset.id).join(',');
+    card.classList.add('is-dragging');
+
+    const onMove = (e) => {
+      if (e.pointerId !== pointerId) return;
+      // Keep scrolling while the pointer rests near the top or bottom edge.
+      if (e.clientY < 70) window.scrollBy(0, -12);
+      else if (e.clientY > window.innerHeight - 90) window.scrollBy(0, 12);
+
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest('.routine-card');
+      if (!target || target === card || target.parentElement !== grid) return;
+      const cards = [...grid.children];
+      if (cards.indexOf(target) > cards.indexOf(card)) target.after(card);
+      else target.before(card);
+    };
+    const onEnd = (e) => {
+      if (e.pointerId !== pointerId) return;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onEnd);
+      document.removeEventListener('pointercancel', onEnd);
+      card.classList.remove('is-dragging');
+      if ([...grid.children].map((c) => c.dataset.id).join(',') !== startOrder) saveOrder(grid);
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onEnd);
+    document.addEventListener('pointercancel', onEnd);
+  };
+
+  /** Keyboard reordering: arrow keys move the focused card one place. */
+  const keyMove = (event, card) => {
+    const back = event.key === 'ArrowUp' || event.key === 'ArrowLeft';
+    const forward = event.key === 'ArrowDown' || event.key === 'ArrowRight';
+    if (!back && !forward) return;
+    event.preventDefault();
+    const sibling = back ? card.previousElementSibling : card.nextElementSibling;
+    if (!sibling) return;
+    if (back) sibling.before(card); else sibling.after(card);
+    event.currentTarget.focus();   // moving a node in the DOM drops its focus
+    saveOrder(card.parentElement);
+  };
+
+  const routineCard = (routine, reorderable = false) => el('article', {
     class: ['routine-card', routine.archived && 'is-archived'],
     style: { '--routine-color': routine.color },
+    dataset: { id: String(routine.id) },
   },
     el('div', { class: 'routine-card__top' },
+      reorderable
+        ? el('button', {
+            class: 'drag-handle',
+            type: 'button',
+            'aria-label': t('routines.dragHandle', { title: routine.title }),
+            'data-tip': t('routines.dragHandle', { title: routine.title }),
+            onpointerdown: (e) => startDrag(e, e.currentTarget.closest('.routine-card')),
+            onkeydown: (e) => keyMove(e, e.currentTarget.closest('.routine-card')),
+          }, icon('grip', { size: 16, stroke: 3 }))
+        : null,
       el('div', { class: 'routine__icon' }, routine.icon),
       el('div', { class: 'grow' },
         el('div', { class: 'routine-card__title' }, routine.title),

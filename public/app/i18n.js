@@ -124,6 +124,8 @@ const en = {
 
   'routines.title': 'Your routines',
   'routines.sub': 'Everything you have set up, active and archived.',
+  'routines.dragHandle': 'Move “{title}”',
+  'routines.dragHint': 'Drag a card by its handle — or focus it and use the arrow keys — to put routines in your own order.',
   'routines.empty': 'No routines yet',
   'routines.emptyText': 'Routines are the building blocks. Create one, or start from a template pack.',
   'routines.searchPlaceholder': 'Search routines…',
@@ -476,6 +478,8 @@ const uz = {
 
   'routines.title': 'Rejimlaringiz',
   'routines.sub': 'Siz yaratgan barcha rejimlar — faol va arxivlangan.',
+  'routines.dragHandle': '“{title}” ni ko‘chirish',
+  'routines.dragHint': 'Rejimlarni o‘z tartibingizga qo‘yish uchun kartani tutqichidan sudrang yoki tutqichni tanlab, strelka tugmalaridan foydalaning.',
   'routines.empty': 'Hozircha rejim yo‘q',
   'routines.emptyText': 'Rejimlar — asosiy g‘isht. Bittasini yarating yoki tayyor to‘plamdan boshlang.',
   'routines.searchPlaceholder': 'Rejimlarni qidirish…',
@@ -828,6 +832,8 @@ const ru = {
 
   'routines.title': 'Ваши рутины',
   'routines.sub': 'Всё, что вы настроили — активное и архивное.',
+  'routines.dragHandle': 'Переместить «{title}»',
+  'routines.dragHint': 'Перетащите карточку за ручку — или выберите её и используйте стрелки, — чтобы расставить рутины в своём порядке.',
   'routines.empty': 'Пока нет рутин',
   'routines.emptyText': 'Рутины — основа. Создайте первую или начните с готового набора.',
   'routines.searchPlaceholder': 'Поиск рутин…',
