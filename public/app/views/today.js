@@ -20,15 +20,38 @@ export function renderToday(container, { date, navigate }) {
   const selected = date || todayISO();
   let data = null;
   let week = null;
+  // Secondary data: tomorrow's routines (for "Up next" once today is clear),
+  // goal names (day summary), this day's journal entry (the one-line note),
+  // and, on an empty day only, whether the account has any routine at all
+  // (first-run guide). None of it is essential — a failed request just
+  // leaves that part out.
+  let extras = { upcoming: [], goals: [], journal: null, routineCount: null };
 
   mount(container, el('div', { class: 'col', style: { gap: 'var(--s-6)' } },
     el('div', { class: 'skeleton skeleton--tile', style: { height: '160px' } }),
     skeletonList(5),
   ));
 
+  const loadExtras = async () => {
+    const isToday = selected === data.today;
+    const [upcoming, goals, journal, routines] = await Promise.allSettled([
+      isToday ? api.upcoming(2) : null,
+      api.goals(true),
+      api.journalEntry(selected),
+      data.items.length ? null : api.routines(true),
+    ]);
+    extras = {
+      upcoming: upcoming.value?.items || [],
+      goals: goals.value?.goals || [],
+      journal: journal.value?.entry || null,
+      routineCount: routines.value ? routines.value.routines.length : null,
+    };
+  };
+
   const load = async () => {
     try {
       [data, week] = await Promise.all([api.day(selected), api.week(selected)]);
+      await loadExtras();
       render();
     } catch (err) {
       mount(container, emptyState({
@@ -116,17 +139,18 @@ export function renderToday(container, { date, navigate }) {
         ),
         el('div', { class: 'hero-card__date' }, formatDate(selected, { long: true, locale: state.user.locale })),
 
-        el('p', { class: 'hero-card__line' },
-          summary.total === 0
-            ? t('today.nothing')
-            : summary.pending === 0
-              ? t('today.allDone')
-              : [
-                  el('b', null, t('today.progress', { done: summary.done, total: summary.total })),
-                  ' · ',
-                  t('today.remaining', { count: summary.pending }),
-                ],
-        ),
+        summary.total > 0 && summary.pending === 0
+          ? daySummary()
+          : el('p', { class: 'hero-card__line' },
+              summary.total === 0
+                ? t('today.nothing')
+                : [
+                    el('b', null, t('today.progress', { done: summary.done, total: summary.total })),
+                    ' · ',
+                    t('today.remaining', { count: summary.pending }),
+                  ],
+            ),
+        upNext(),
         summary.minutes_planned
           ? el('div', { class: 'subtle', style: { 'font-size': 'var(--text-sm)', 'margin-top': '4px' } },
               t('today.plannedTime', { time: formatDuration(summary.minutes_planned) }))
@@ -134,7 +158,8 @@ export function renderToday(container, { date, navigate }) {
 
         el('div', { class: 'hero-card__actions' },
           el('button', {
-            class: 'btn btn--primary',
+            // Hidden on phones, where the header's "+" is always in reach.
+            class: 'btn btn--primary hero-card__add',
             onclick: () => openRoutineForm(null, {
               weekStart: state.user.week_start,
               date: selected,
@@ -175,13 +200,212 @@ export function renderToday(container, { date, navigate }) {
         ),
       ),
 
-      progressRing(rate, {
-        size: 132,
-        stroke: 11,
-        label: summary.total ? `${pct(rate)}%` : '—',
-        sublabel: summary.total ? `${summary.done}/${summary.total}` : t('today.nothing'),
-        color: rate >= 100 ? '#22c55e' : undefined,
-      }),
+      // On a phone the big ring filled the first screen and pushed the list
+      // below the fold; a small one beside the text leaves room for it.
+      progressRing(rate, compact()
+        ? { size: 72, stroke: 7, label: summary.total ? `${pct(rate)}%` : '—', color: rate >= 100 ? '#22c55e' : undefined }
+        : {
+            size: 132,
+            stroke: 11,
+            label: summary.total ? `${pct(rate)}%` : '—',
+            sublabel: summary.total ? `${summary.done}/${summary.total}` : t('today.nothing'),
+            color: rate >= 100 ? '#22c55e' : undefined,
+          }),
+    );
+  };
+
+  const compact = () => window.matchMedia('(max-width: 640px)').matches;
+
+  // --- Up next (UI-04) -----------------------------------------------------
+
+  /**
+   * What to do next: a routine running right now, else the next one later
+   * today, else tomorrow's first. Today's candidates come from the live day
+   * items, so ticking one off moves the line on without a reload.
+   */
+  const nextUp = () => {
+    if (selected !== data.today) return null;
+    const now = toMinutes(nowTime());
+    const pending = data.items
+      .filter((i) => i.status === 'pending' && i.start_time)
+      .sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+    const running = pending.find((i) => {
+      const start = toMinutes(i.start_time);
+      return start <= now && now < start + (i.duration_min || 0);
+    });
+    if (running) return { item: running, when: 'now' };
+
+    const later = pending.find((i) => toMinutes(i.start_time) >= now);
+    if (later) return { item: later, when: 'today', minutes: toMinutes(later.start_time) - now };
+
+    const tomorrow = addDays(data.today, 1);
+    const first = extras.upcoming
+      .filter((u) => u.date === tomorrow && u.start_time)
+      .sort((a, b) => a.start_time.localeCompare(b.start_time))[0];
+    return first ? { item: first, when: 'tomorrow', date: tomorrow } : null;
+  };
+
+  const upNext = () => {
+    const next = nextUp();
+    if (!next) return null;
+    const { item } = next;
+    const when = next.when === 'now'
+      ? t('today.nowRunning')
+      : next.when === 'tomorrow'
+        ? `${t('date.tomorrow')} ${item.start_time}`
+        : `${item.start_time} · ${inTime(next.minutes)}`;
+
+    return el('button', {
+      class: 'up-next',
+      type: 'button',
+      onclick: () => {
+        if (next.when === 'tomorrow') { navigate(`/day/${next.date}`); return; }
+        const row = container.querySelector(`[data-routine="${item.id}"]`);
+        row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row?.classList.add('is-flash');
+        setTimeout(() => row?.classList.remove('is-flash'), 1200);
+      },
+    },
+      el('span', { class: 'up-next__label' }, t('today.upNext')),
+      el('span', { class: 'up-next__icon', 'aria-hidden': 'true' }, item.icon),
+      el('span', { class: 'up-next__title truncate' }, item.title),
+      el('span', { class: 'up-next__when' }, when),
+    );
+  };
+
+  /** "in 45 min" / "in 1 h 20 min", in the user's language. */
+  const inTime = (minutes) => {
+    if (minutes < 60) return t('today.inMin', { count: Math.max(1, minutes) });
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return m ? t('today.inHoursMin', { h, m }) : t('today.inHours', { h });
+  };
+
+  // --- Day summary (UI-13) -------------------------------------------------
+
+  /**
+   * Shown once nothing is left: what got done, how long it took, which goals
+   * it served, and a one-line journal note while the day is fresh.
+   */
+  const daySummary = () => {
+    const done = data.items.filter((i) => i.status === 'done');
+    const skipped = data.items.length - done.length;
+    const minutes = done.reduce((sum, i) => sum + (i.duration_min || 0), 0);
+
+    const perGoal = new Map();
+    for (const item of done) if (item.goal_id) perGoal.set(item.goal_id, (perGoal.get(item.goal_id) || 0) + 1);
+    const goalChips = [...perGoal].flatMap(([id, count]) => {
+      const goal = extras.goals.find((g) => g.id === id);
+      return goal ? [el('span', { class: 'chip' }, `${goal.icon} ${goal.title} +${count}`)] : [];
+    });
+
+    return el('div', { class: 'day-summary' },
+      el('div', { class: 'day-summary__title' }, icon('check', { size: 16, stroke: 3 }), t('today.summaryTitle')),
+      el('p', { class: 'hero-card__line', style: { 'margin-top': 'var(--s-2)' } },
+        el('b', null, t('today.progress', { done: done.length, total: data.items.length })),
+        minutes ? ` · ${formatDuration(minutes)}` : '',
+        skipped ? ` · ${t('today.summarySkipped', { count: skipped })}` : '',
+      ),
+      goalChips.length
+        ? el('div', { class: 'row row--wrap', style: { gap: 'var(--s-2)', 'margin-top': 'var(--s-2)' } },
+            el('span', { class: 'subtle', style: { 'font-size': 'var(--text-sm)' } }, t('today.summaryGoals')),
+            ...goalChips)
+        : null,
+      journalNote(),
+    );
+  };
+
+  /** The day's journal line: the saved text, or a field to write one. */
+  const journalNote = () => {
+    const saved = extras.journal?.body?.trim();
+    if (saved) {
+      return el('a', {
+        class: 'day-summary__note', href: `/journal/${selected}`,
+        onclick: (e) => { e.preventDefault(); navigate(`/journal/${selected}`); },
+      }, icon('journal', { size: 15 }), el('span', { class: 'truncate' }, saved.split('\n')[0]));
+    }
+
+    const input = el('input', {
+      class: 'input', id: 'f-day-note', type: 'text', maxlength: '280',
+      placeholder: t('today.notePlaceholder'), 'aria-label': t('nav.journal'),
+      onkeydown: (e) => { if (e.key === 'Enter') save.click(); },
+    });
+    const save = el('button', {
+      class: 'btn btn--secondary', type: 'button',
+      onclick: async (event) => {
+        const button = event.currentTarget;
+        const body = input.value.trim();
+        if (!body) { input.focus(); return; }
+        button.setAttribute('aria-busy', 'true');
+        try {
+          // The journal PUT replaces the whole entry, so the day's mood and
+          // energy are sent back unchanged rather than wiped.
+          const { entry } = await api.saveJournal(selected, {
+            mood: extras.journal?.mood ?? null,
+            energy: extras.journal?.energy ?? null,
+            body,
+          });
+          extras.journal = entry;
+          toast(t('today.noteSaved'));
+          render();
+        } catch (err) {
+          button.removeAttribute('aria-busy');
+          toast(err.message || t('error.generic'), 'error');
+        }
+      },
+    }, t('action.save'));
+
+    return el('div', { class: 'row', style: { gap: 'var(--s-2)', 'margin-top': 'var(--s-4)' } }, input, save);
+  };
+
+  // --- First run (UI-05) ---------------------------------------------------
+
+  /** Three steps for an account with no routines yet, instead of a bare "add". */
+  const firstRun = () => {
+    const hasGoal = extras.goals.length > 0;
+    const steps = [
+      {
+        done: hasGoal,
+        title: t('onboard.goal'),
+        text: t('onboard.goalText'),
+        action: hasGoal ? null : el('button', { class: 'btn btn--secondary btn--sm', onclick: () => navigate('/goals') },
+          icon('target', { size: 15 }), t('goals.new')),
+      },
+      {
+        done: false,
+        title: t('onboard.routine'),
+        text: t('onboard.routineText'),
+        action: el('div', { class: 'row row--wrap', style: { gap: 'var(--s-2)' } },
+          el('button', {
+            class: 'btn btn--primary btn--sm',
+            onclick: () => openRoutineForm(null, {
+              weekStart: state.user.week_start,
+              date: selected,
+              onSaved: () => { invalidateRoutines(); load(); },
+            }),
+          }, icon('plus', { size: 15 }), t('action.add')),
+          el('button', { class: 'btn btn--secondary btn--sm', onclick: () => navigate('/routines') },
+            icon('layers', { size: 15 }), t('routines.templates')),
+        ),
+      },
+      { done: false, locked: true, title: t('onboard.check'), text: t('onboard.checkText') },
+    ];
+
+    return el('section', { class: 'card onboard' },
+      el('h2', { class: 'onboard__title' }, t('onboard.title')),
+      el('p', { class: 'muted' }, t('onboard.sub')),
+      el('ol', { class: 'onboard__steps' },
+        ...steps.map((step, i) => el('li', { class: ['onboard__step', step.done && 'is-done', step.locked && 'is-locked'] },
+          el('span', { class: 'onboard__num', 'aria-hidden': 'true' },
+            step.done ? icon('check', { size: 14, stroke: 3 }) : String(i + 1)),
+          el('div', { class: 'onboard__body' },
+            el('div', { class: 'onboard__step-title' }, step.title),
+            el('p', { class: 'onboard__text' }, step.text),
+            step.action || null,
+          ),
+        )),
+      ),
     );
   };
 
@@ -233,6 +457,7 @@ export function renderToday(container, { date, navigate }) {
   // --- Timeline ------------------------------------------------------------
 
   const timeline = () => {
+    if (!data.items.length && extras.routineCount === 0) return firstRun();
     if (!data.items.length) {
       return el('section', { class: 'card' }, emptyState({
         art: '🗓️',
@@ -293,6 +518,7 @@ export function renderToday(container, { date, navigate }) {
     return el('article', {
       class: ['routine', isDone && 'is-done', isSkipped && 'is-skipped', overdue && 'is-overdue'],
       style: { '--routine-color': item.color },
+      dataset: { routine: String(item.id) },
     },
       el('button', {
         class: ['check', isDone && 'is-done', isSkipped && 'is-skipped'],
@@ -366,4 +592,10 @@ function greeting() {
   if (hour < 17) return t('today.greeting.afternoon');
   if (hour < 22) return t('today.greeting.evening');
   return t('today.greeting.night');
+}
+
+/** Minutes since midnight for "HH:MM". */
+function toMinutes(time) {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
 }
