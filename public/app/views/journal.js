@@ -7,7 +7,6 @@ import { toast, emptyState, skeletonList } from '../ui.js';
 import { todayISO, formatDate, relativeDay, debounce } from '../utils.js';
 
 const MOODS = ['😞', '😕', '😐', '🙂', '😄'];
-const ENERGY = ['🪫', '🔋', '⚡', '🔥', '🚀'];
 
 /** Daily journal with mood/energy check-in and a list of past entries. */
 export function renderJournal(container, { date, navigate }) {
@@ -85,7 +84,7 @@ export function renderJournal(container, { date, navigate }) {
 
     el('div', { class: 'col', style: { gap: 'var(--s-5)' } },
       pickerRow(t('journal.mood'), MOODS, 'mood'),
-      pickerRow(t('journal.energy'), ENERGY, 'energy'),
+      pickerRow(t('journal.energy'), [1, 2, 3, 4, 5].map((n) => energyMeter(n)), 'energy'),
 
       el('div', { class: 'field' },
         el('label', { class: 'field__label', for: 'journal-body' }, t('form.notes')),
@@ -106,21 +105,27 @@ export function renderJournal(container, { date, navigate }) {
     ),
   );
 
-  const pickerRow = (label, emojis, key) => {
+  const pickerRow = (label, faces, key) => {
     const row = el('div', { class: 'mood-row' });
-    emojis.forEach((emoji, index) => {
+    faces.forEach((face, index) => {
       const value = index + 1;
+      const text = key === 'mood' ? t(`mood.${value}`) : `${value}/5`;
       row.appendChild(el('button', {
         type: 'button',
         class: ['mood', draft[key] === value && 'is-on'],
+        'aria-pressed': String(draft[key] === value),
+        'aria-label': `${label}: ${text}`,
         onclick: (event) => {
           // Tapping the active option clears it.
           draft[key] = draft[key] === value ? null : value;
-          [...row.children].forEach((n) => n.classList.remove('is-on'));
-          if (draft[key] === value) event.currentTarget.classList.add('is-on');
+          [...row.children].forEach((n) => { n.classList.remove('is-on'); n.setAttribute('aria-pressed', 'false'); });
+          if (draft[key] === value) {
+            event.currentTarget.classList.add('is-on');
+            event.currentTarget.setAttribute('aria-pressed', 'true');
+          }
           autosave();
         },
-      }, emoji, el('span', null, key === 'mood' ? t(`mood.${value}`) : String(value))));
+      }, face, el('span', null, key === 'mood' ? text : String(value))));
     });
     return el('div', { class: 'field' }, el('div', { class: 'field__label' }, label), row);
   };
@@ -139,7 +144,7 @@ export function renderJournal(container, { date, navigate }) {
           el('div', { class: 'journal-entry__date' }, formatDate(entry.entry_date, { locale: state.user.locale })),
           el('div', { style: { 'font-size': '17px', 'margin-top': '4px' } },
             entry.mood ? MOODS[entry.mood - 1] : '',
-            entry.energy ? ENERGY[entry.energy - 1] : ''),
+            entry.energy ? energyMeter(entry.energy, { small: true }) : null),
         ),
         el('div', null,
           el('p', { class: 'journal-entry__body' }, entry.body || '—'),
@@ -153,4 +158,14 @@ export function renderJournal(container, { date, navigate }) {
   };
 
   load();
+}
+
+/**
+ * Energy as a five-step meter: the same bar shape filling up, so 3 reads as
+ * "less than 4" at a glance. The old battery / bolt / fire / rocket emoji were
+ * five different things, not one scale.
+ */
+function energyMeter(level, { small = false } = {}) {
+  return el('span', { class: ['energy-meter', small && 'energy-meter--sm'], 'aria-hidden': 'true' },
+    ...[1, 2, 3, 4, 5].map((step) => el('i', { class: step <= level ? 'is-on' : null })));
 }
