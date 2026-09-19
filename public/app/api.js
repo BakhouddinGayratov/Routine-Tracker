@@ -119,6 +119,12 @@ export const api = {
   journalEntry: (date) => get(`/journal/${date}`),
   saveJournal: (date, data) => put(`/journal/${date}`, data),
 
+  // Push ------------------------------------------------------------------
+  pushKey: () => get('/push/key'),
+  pushSubscribe: (subscription) => post('/push/subscribe', subscription),
+  pushUnsubscribe: (endpoint) => del('/push/subscribe', { endpoint }),
+  pushTest: () => post('/push/test'),
+
   // Misc ------------------------------------------------------------------
   templates: () => get('/templates'),
   applyTemplate: (id) => post(`/templates/${id}/apply`),

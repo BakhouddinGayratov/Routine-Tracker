@@ -6,6 +6,7 @@ import { state, updateProfile, signOut } from '../store.js';
 import { toast, confirmDialog, modal, emptyState } from '../ui.js';
 import { COLOR_CHOICES, initials, formatDate } from '../utils.js';
 import { requestNotificationPermission, notificationState } from '../reminders.js';
+import { enablePush, disablePush, pushState } from '../push.js';
 
 /** Profile, appearance, preferences, security, data and account deletion. */
 export function renderSettings(container, { navigate }) {
@@ -16,8 +17,42 @@ export function renderSettings(container, { navigate }) {
 
   const sessionsSlot = el('div');
 
+  // Whether reminders reach this browser with the site closed (server push),
+  // only while it is open, or not at all — plus a way to prove it works.
+  const pushStatus = el('div', { class: 'push-status' });
+  const paintPushStatus = async () => {
+    const stateNow = await pushState().catch(() => 'unsupported');
+    const on = state.user?.reminders_on;
+    const key = !on ? null
+      : stateNow === 'on' ? 'settings.pushOn'
+        : stateNow === 'unsupported' ? 'settings.pushUnsupported'
+          : stateNow === 'denied' ? null : 'settings.pushOff';
+    if (!key) { mount(pushStatus); return; }
+    mount(pushStatus,
+      el('span', { class: ['push-status__text', stateNow === 'on' && 'is-on'] }, t(key)),
+      stateNow === 'on'
+        ? el('button', {
+            class: 'btn btn--ghost btn--sm', type: 'button',
+            onclick: async (event) => {
+              const button = event.currentTarget;
+              button.setAttribute('aria-busy', 'true');
+              try {
+                const result = await api.pushTest();
+                toast(result.ok ? t('settings.pushTestSent') : t('error.generic'), result.ok ? 'success' : 'error');
+              } catch (err) {
+                toast(err.message || t('error.generic'), 'error');
+              } finally {
+                button.removeAttribute('aria-busy');
+              }
+            },
+          }, t('settings.pushTest'))
+        : null,
+    );
+  };
+
   const render = () => {
     user = state.user;
+    paintPushStatus();
     mount(container,
       el('div', { class: 'page-head' },
         el('h1', null, t('settings.title')),
@@ -190,6 +225,7 @@ export function renderSettings(container, { navigate }) {
           el('div', { class: 'settings-row__title' }, t('settings.reminders')),
           el('div', { class: 'settings-row__desc' },
             notificationState() === 'denied' ? t('settings.remindersBlocked') : t('settings.remindersDesc')),
+          pushStatus,
         ),
         el('div', { class: 'settings-row__control' },
           el('label', { class: 'switch' },
@@ -198,15 +234,23 @@ export function renderSettings(container, { navigate }) {
               checked: user.reminders_on,
               disabled: notificationState() === 'denied',
               onchange: async (e) => {
-                if (e.target.checked) {
+                const input = e.target;
+                if (input.checked) {
                   const granted = await requestNotificationPermission();
                   if (!granted) {
-                    e.target.checked = false;
+                    input.checked = false;
                     toast(t('settings.remindersBlocked'), 'error');
                     return;
                   }
                 }
-                patch({ reminders_on: e.target.checked }, { silent: true });
+                await patch({ reminders_on: input.checked }, { silent: true });
+                // Server push is what makes a reminder arrive with the site
+                // closed; in-tab reminders keep working if it is unavailable.
+                try {
+                  if (input.checked) await enablePush();
+                  else await disablePush();
+                } catch { /* reported by the status line below */ }
+                paintPushStatus();
               },
             }),
             el('span', { class: 'switch__track' }),

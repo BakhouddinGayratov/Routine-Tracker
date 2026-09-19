@@ -137,3 +137,28 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- Web Push subscriptions: one row per browser that allowed notifications.
+-- The endpoint identifies the browser, so when someone else signs in on the
+-- same browser the row moves to them instead of duplicating.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint    TEXT    NOT NULL UNIQUE,
+  p256dh      TEXT    NOT NULL,                -- browser's public key (base64url)
+  auth        TEXT    NOT NULL,                -- browser's auth secret (base64url)
+  user_agent  TEXT    NOT NULL DEFAULT '',
+  created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
+
+-- Reminders already pushed. The primary key is the lock: a reminder is
+-- claimed with INSERT OR IGNORE before it is sent, so a restart or two
+-- overlapping ticks can never send the same one twice.
+CREATE TABLE IF NOT EXISTS reminders_sent (
+  routine_id  INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+  log_date    TEXT    NOT NULL,
+  sent_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+  PRIMARY KEY (routine_id, log_date)
+);

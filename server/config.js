@@ -61,6 +61,9 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  // Web Push reminders, sent once a minute. Off under NODE_ENV=test so a test
+  // run never contacts a real push service.
+  pushReminders: (process.env.PUSH_REMINDERS || (process.env.NODE_ENV === 'test' ? 'off' : 'on')) !== 'off',
   // Daily database backups. Off under NODE_ENV=test so a test run can never
   // write into, or prune, the real backup folder.
   backup: {

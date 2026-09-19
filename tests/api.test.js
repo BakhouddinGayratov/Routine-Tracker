@@ -335,6 +335,140 @@ await test('a reorder request without ids is rejected', async () => {
   assert.equal(r.status, 400);
 });
 
+// --- Web Push -----------------------------------------------------------
+
+const webpush = await import('../server/lib/webpush.js');
+const { runReminders, clockIn } = await import('../server/lib/reminders.js');
+const nodeCrypto = await import('node:crypto');
+
+await test('push encryption matches the RFC 8291 test vector', async () => {
+  const body = webpush.encryptPayload(
+    Buffer.from('V2hlbiBJIGdyb3cgdXAsIEkgd2FudCB0byBiZSBhIHdhdGVybWVsb24', 'base64url'),
+    {
+      p256dh: 'BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4',
+      auth: 'BTBZMqHH6r4Tts7J_aSIgg',
+    },
+    {
+      localPrivateKey: Buffer.from('yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw', 'base64url'),
+      salt: Buffer.from('DGv6ra1nlYgDCS1FRnbzlw', 'base64url'),
+    },
+  );
+  assert.equal(body.toString('base64url'),
+    'DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN');
+});
+
+await test('the VAPID token is a valid ES256 JWT for the push service', async () => {
+  const keys = webpush.vapidKeys();
+  const header = webpush.vapidAuthorization('https://fcm.googleapis.com/fcm/send/abc', { subject: 'mailto:test@example.com' });
+  const [, jwt, k] = /^vapid t=([^,]+), k=(.+)$/.exec(header);
+  assert.equal(k, keys.publicKey);
+  const [h, c, s] = jwt.split('.');
+  const point = Buffer.from(keys.publicKey, 'base64url');
+  const publicKey = nodeCrypto.createPublicKey({ format: 'jwk', key: { kty: 'EC', crv: 'P-256', x: point.subarray(1, 33).toString('base64url'), y: point.subarray(33).toString('base64url') } });
+  assert.ok(nodeCrypto.verify('sha256', Buffer.from(`${h}.${c}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(s, 'base64url')), 'signature verifies');
+  const claims = JSON.parse(Buffer.from(c, 'base64url'));
+  assert.equal(claims.aud, 'https://fcm.googleapis.com');
+  assert.equal(claims.sub, 'mailto:test@example.com');
+  assert.ok(claims.exp > Date.now() / 1000 && claims.exp <= Date.now() / 1000 + 12 * 3600 + 5);
+});
+
+await test('only https endpoints on known push services are accepted', async () => {
+  assert.ok(webpush.isAllowedEndpoint('https://fcm.googleapis.com/fcm/send/x'));
+  assert.ok(webpush.isAllowedEndpoint('https://web.push.apple.com/abc'));
+  assert.ok(webpush.isAllowedEndpoint('https://wns2-by3p.notify.windows.com/w/?token=1'));
+  assert.ok(!webpush.isAllowedEndpoint('http://fcm.googleapis.com/fcm/send/x'), 'plain http');
+  assert.ok(!webpush.isAllowedEndpoint('https://127.0.0.1/admin'), 'internal address');
+  assert.ok(!webpush.isAllowedEndpoint('https://fcm.googleapis.com.evil.example/x'), 'look-alike host');
+  assert.ok(!webpush.isAllowedEndpoint('https://user:pass@fcm.googleapis.com/x'), 'credentials in URL');
+});
+
+const browserKeys = nodeCrypto.createECDH('prime256v1');
+browserKeys.generateKeys();
+const subscription = {
+  endpoint: `https://fcm.googleapis.com/fcm/send/test-${Date.now()}`,
+  keys: { p256dh: browserKeys.getPublicKey().toString('base64url'), auth: nodeCrypto.randomBytes(16).toString('base64url') },
+};
+
+await test('the push key is served to signed-in users', async () => {
+  const r = await api('GET', '/api/push/key');
+  assert.equal(r.status, 200);
+  assert.equal(Buffer.from(r.body.publicKey, 'base64url').length, 65);
+});
+
+await test('a subscription to an internal address is refused', async () => {
+  const r = await api('POST', '/api/push/subscribe', { ...subscription, endpoint: 'https://10.0.0.5/steal' });
+  assert.equal(r.status, 400);
+  assert.ok(r.body.error.fields.endpoint);
+});
+
+await test('a subscription with malformed keys is refused', async () => {
+  const r = await api('POST', '/api/push/subscribe', { endpoint: subscription.endpoint, keys: { p256dh: 'abc', auth: 'x' } });
+  assert.equal(r.status, 400);
+  assert.ok(r.body.error.fields.p256dh && r.body.error.fields.auth);
+});
+
+await test('a browser can subscribe to reminders', async () => {
+  const r = await api('POST', '/api/push/subscribe', subscription);
+  assert.equal(r.status, 201);
+});
+
+await test('a due reminder is pushed once, with the routine and its time', async () => {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const created = await api('POST', '/api/routines', {
+    title: 'Push me', icon: '🔔', start_time: '10:00', reminder_min: 15, repeat_type: 'once', start_date: todayUtc,
+  });
+  const id = created.body.routine.id;
+  const at = (hh, mm) => new Date(`${todayUtc}T${hh}:${mm}:00Z`);
+  const sent = [];
+  const send = async (sub, message) => { sent.push({ sub, message }); return { ok: true, gone: false, status: 201 }; };
+  const mine = () => sent.filter((s) => s.message.tag === `routine-${id}-${todayUtc}`);
+
+  await runReminders({ now: at('09', '30'), send });
+  assert.equal(mine().length, 0, 'not yet due at 09:30');
+  await runReminders({ now: at('09', '46'), send });
+  assert.equal(mine().length, 1, 'due at 09:45, sent at 09:46');
+  assert.equal(mine()[0].sub.endpoint, subscription.endpoint);
+  assert.match(mine()[0].message.title, /Push me/);
+  assert.match(mine()[0].message.body, /10:00/);
+  await runReminders({ now: at('09', '47'), send });
+  assert.equal(mine().length, 1, 'never sent twice');
+});
+
+await test('a reminder is not pushed once the routine is done', async () => {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const created = await api('POST', '/api/routines', {
+    title: 'Already done', start_time: '11:00', reminder_min: 0, repeat_type: 'once', start_date: todayUtc,
+  });
+  const id = created.body.routine.id;
+  await api('POST', '/api/days/log', { routine_id: id, date: todayUtc, status: 'done' });
+  const sent = [];
+  await runReminders({ now: new Date(`${todayUtc}T11:01:00Z`), send: async (s, m) => { sent.push(m); return { ok: true, gone: false }; } });
+  assert.ok(!sent.some((m) => m.tag === `routine-${id}-${todayUtc}`));
+});
+
+await test('a subscription the push service reports gone is removed', async () => {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  await api('POST', '/api/routines', { title: 'Gone', start_time: '12:00', reminder_min: 0, repeat_type: 'once', start_date: todayUtc });
+  const result = await runReminders({ now: new Date(`${todayUtc}T12:00:30Z`), send: async () => ({ ok: false, gone: true, status: 410 }) });
+  assert.ok(result.removed >= 1);
+  const left = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint = ?').get(subscription.endpoint).n;
+  assert.equal(left, 0);
+});
+
+await test('reminder time follows the user’s own timezone', async () => {
+  const at = new Date('2026-09-19T05:30:00Z');
+  assert.deepEqual(clockIn('Asia/Tashkent', at), { date: '2026-09-19', minutes: 10 * 60 + 30 });
+  assert.deepEqual(clockIn('America/New_York', at), { date: '2026-09-19', minutes: 60 + 30 });
+  assert.deepEqual(clockIn('Not/AZone', at), { date: '2026-09-19', minutes: 5 * 60 + 30 });
+});
+
+await test('a browser can unsubscribe', async () => {
+  await api('POST', '/api/push/subscribe', subscription);
+  const r = await api('DELETE', '/api/push/subscribe', { endpoint: subscription.endpoint });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.removed, 1);
+});
+
 await test('a goal can be created', async () => {
   const r = await api('POST', '/api/goals', { title: 'Run a half marathon', target_date: '2027-01-01' });
   assert.equal(r.status, 201);

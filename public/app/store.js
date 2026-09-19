@@ -1,5 +1,6 @@
 import { api, auth } from './api.js';
 import { setLocale } from './i18n.js';
+import { disablePush } from './push.js';
 
 /**
  * Application state.
@@ -14,6 +15,7 @@ export const state = {
   selectedDate: null,
   theme: 'dark',
   summary: null,   // level / streak / today's progress, shown in the app shell
+  offline: false,  // the server could not be reached at boot; the session is kept
 };
 
 const listeners = new Set();
@@ -58,9 +60,14 @@ export function setUser(user) {
 export async function bootstrap() {
   try {
     const { user } = await api.me();
+    state.offline = false;
     setUser(user);
-  } catch {
-    auth.token = null;
+  } catch (err) {
+    // Only a real "not signed in" (401) ends the session. No connection used
+    // to wipe the token too, so a phone that opened the app offline — which
+    // the service worker now allows — would have been signed out for good.
+    if (err?.status === 401) auth.token = null;
+    state.offline = err?.status === 0 && Boolean(auth.token);
     state.user = null;
     applyUserPreferences(null);
   } finally {
@@ -84,6 +91,9 @@ export async function signUp(details) {
 }
 
 export async function signOut() {
+  // Stop this browser's push reminders first, while the request is still
+  // authenticated; the next person to sign in here should not get them.
+  try { await disablePush(); } catch { /* best effort */ }
   try { await api.logout(); } catch { /* the local session is cleared regardless */ }
   auth.token = null;
   state.user = null;

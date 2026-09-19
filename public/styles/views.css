@@ -715,3 +715,12 @@
   opacity: 0.9;
   transform: none;
 }
+
+/* --- Push status (UI-11) -------------------------------------------------- */
+
+.push-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-top: var(--s-2); }
+.push-status:empty { display: none; }
+.push-status__text { font-size: var(--text-xs); color: var(--fg-muted); }
+.push-status__text.is-on { color: var(--success); font-weight: 600; }
+
+.offline-screen { display: grid; place-items: center; min-height: 100dvh; padding: var(--s-6) var(--s-4); }

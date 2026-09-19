@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { state } from './store.js';
 import { todayISO, nowTime } from './utils.js';
+import { t } from './i18n.js';
 
 /**
  * Browser reminders.
@@ -8,6 +9,10 @@ import { todayISO, nowTime } from './utils.js';
  * Every minute we look at today's still-pending routines and fire a
  * notification for any whose reminder moment has just arrived. Fired reminders
  * are remembered per day in localStorage so a page refresh doesn't re-notify.
+ *
+ * This only runs while a tab is open. The server pushes the same reminders to
+ * subscribed browsers (see push.js); both use the tag routine-<id>-<date>, so
+ * when both arrive the second replaces the first.
  */
 
 let timer = null;
@@ -69,17 +74,29 @@ function tick() {
     if (alreadyFired(date, item.id)) continue;
     markFired(date, item.id);
 
-    try {
-      new Notification(item.title, {
-        body: item.reminder_min
-          ? `Starts at ${item.start_time} — in ${item.reminder_min} min`
-          : `Starting now (${item.start_time})`,
-        tag: `routine-${item.id}-${date}`,
-        icon: '/assets/icon.svg',
-        badge: '/assets/icon.svg',
-      });
-    } catch { /* some browsers block construction outside a service worker */ }
+    show(`${item.icon} ${item.title}`, {
+      body: item.reminder_min
+        ? t('reminders.soon', { time: item.start_time, count: item.reminder_min })
+        : t('reminders.now', { time: item.start_time }),
+      tag: `routine-${item.id}-${date}`,
+      icon: '/assets/icon-192.png',
+      badge: '/assets/icon-192.png',
+      data: { url: '/today' },
+    });
   }
+}
+
+/**
+ * Prefer the service worker's showNotification: Chrome on Android refuses
+ * `new Notification()` outright, and a worker notification can be clicked
+ * back into the app.
+ */
+async function show(title, options) {
+  try {
+    const registration = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null;
+    if (registration) { await registration.showNotification(title, options); return; }
+    new Notification(title, options);
+  } catch { /* notifications blocked or unsupported here */ }
 }
 
 function subtractMinutes(time, minutes) {

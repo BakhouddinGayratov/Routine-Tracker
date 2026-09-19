@@ -1,13 +1,18 @@
 {
+  "id": "/",
   "name": "Routine Tracker",
   "short_name": "Routines",
   "description": "Plan your routines by the hour, tick them off, and watch your streaks grow.",
-  "start_url": "/",
+  "start_url": "/today",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0b0d14",
   "theme_color": "#0b0d14",
   "orientation": "portrait-primary",
   "icons": [
-    { "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/assets/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
 }

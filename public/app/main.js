@@ -2,10 +2,11 @@ import { el, mount } from './dom.js';
 import { icon } from './icons.js';
 import { t, getLocale } from './i18n.js';
 import { state, bootstrap, subscribe, signOut, updateProfile, refreshSummary } from './store.js';
-import { toast } from './ui.js';
+import { toast, emptyState } from './ui.js';
 import { api } from './api.js';
 import { openPalette } from './palette.js';
 import { startReminders, stopReminders } from './reminders.js';
+import { registerServiceWorker, enablePush } from './push.js';
 import { initials, todayISO, relativeDay, formatDate } from './utils.js';
 import { openRoutineForm } from './views/routine-form.js';
 
@@ -423,6 +424,18 @@ function render() {
   const match = matchRoute(path);
 
   // Signed out: only the guest routes are reachable.
+  // Signed in, but the server could not be reached: say so, rather than
+  // showing the sign-in screen as if the session had ended.
+  if (!state.user && state.offline) {
+    mount(appRoot, el('div', { class: 'offline-screen' }, emptyState({
+      art: '📡',
+      title: t('offline.title'),
+      text: t('offline.text'),
+      action: el('button', { class: 'btn btn--primary', onclick: () => location.reload() }, t('action.retry')),
+    })));
+    return;
+  }
+
   if (!state.user) {
     const guestRoute = match?.route?.guest ? match.route : ROUTES[0];
     if (!match?.route?.guest && path !== '/login' && path !== '/register') {
@@ -551,4 +564,11 @@ function paintSummary() {
 
   if (state.user?.reminders_on) startReminders();
   if (state.user) refreshSummary();
+
+  registerServiceWorker();
+  // Keep this browser's push subscription current (a rotated key, a lost
+  // subscription) whenever reminders are on and permission was given.
+  if (state.user?.reminders_on && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+    enablePush().catch(() => { /* in-tab reminders still work */ });
+  }
 })();
