@@ -112,8 +112,18 @@
 
   --fg: #171a2b;
   --fg-muted: #5a6379;
-  --fg-subtle: #8b93a7;
+  /* Measured, WCAG AA for small text (≥ 4.5:1): #8b93a7 read at only
+     2.75–3.07 on the light surfaces; this reads at 4.76–5.32. */
+  --fg-subtle: #636b81;
   --fg-inverse: #ffffff;
+
+  /* The shared 500-weight success/warning/danger are bright enough for text
+     on a dark ground but not on white: badge text measured 1.9–3.2:1 on its
+     own tinted background ("High" in amber was near invisible). The 700
+     shades read at 4.5–5.5:1 and still work as fills. */
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #be123c;
 
   --accent: var(--brand-600);
   --accent-strong: var(--brand-600);
