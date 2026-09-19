@@ -356,6 +356,26 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
               }),
             ),
           ),
+          // Quick lengths (UI-10): one tap sets the finish time from the start.
+          el('div', { class: 'quick-times', role: 'group', 'aria-label': t('form.quickLength') },
+            ...[15, 30, 60, 120].map((minutes) => el('button', {
+              type: 'button',
+              class: 'chip chip--button',
+              onclick: (event) => {
+                const field = event.currentTarget.closest('.field');
+                // No start yet: begin at the next quarter hour, the way a slot
+                // is usually booked, rather than refusing the tap.
+                if (!draft.start_time) {
+                  draft.start_time = nextQuarterHour();
+                  field.querySelector('#f-time').value = draft.start_time;
+                }
+                draft.end_time = formatClock(toMinutes(draft.start_time) + minutes);
+                field.querySelector('#f-end-time').value = draft.end_time;
+                syncDuration();
+                refreshPreview();
+              },
+            }, minutes < 60 ? t('form.minutesShort', { count: minutes }) : t('form.hoursShort', { count: minutes / 60 }))),
+          ),
           el('div', { class: 'field__hint' }, t('form.timeHint')),
         ),
 
@@ -463,12 +483,23 @@ function toMinutes(time) {
   return Number.isInteger(hours) && Number.isInteger(minutes) ? hours * 60 + minutes : null;
 }
 
+/** "HH:MM" for a minute count, wrapping past midnight. */
+function formatClock(minutes) {
+  const wrapped = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+}
+
 /** The finish time implied by a saved routine's start time and duration. */
 function endTimeOf(routine) {
   const start = toMinutes(routine?.start_time);
   if (start === null || !routine?.duration_min) return '';
-  const end = (start + routine.duration_min) % 1440;
-  return `${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`;
+  return formatClock(start + routine.duration_min);
+}
+
+/** The next quarter hour from now, e.g. 09:07 → "09:15". */
+function nextQuarterHour() {
+  const now = new Date();
+  return formatClock(Math.ceil((now.getHours() * 60 + now.getMinutes() + 1) / 15) * 15);
 }
 
 /** "06:00 – 07:00", a bare start time, or "anytime". */

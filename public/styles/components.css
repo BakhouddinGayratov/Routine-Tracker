@@ -292,6 +292,10 @@
 .chip--filter { cursor: pointer; transition: all var(--t-fast) var(--ease); }
 .chip--filter:hover { border-color: var(--line-strong); color: var(--fg); }
 .chip--filter.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+.chip--button { cursor: pointer; font-variant-numeric: tabular-nums; transition: all var(--t-fast) var(--ease); }
+.chip--button:hover { border-color: var(--accent); color: var(--fg); }
+.chip--button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.quick-times { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
 .chip__dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
 
 .badge {
