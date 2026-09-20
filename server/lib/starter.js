@@ -105,26 +105,26 @@ const INSERT = `
   )`;
 
 /** Insert a template's routines for a user. Returns how many were created. */
-export function applyTemplate(user, templateId) {
+export async function applyTemplate(user, templateId) {
   const template = TEMPLATES.find((t) => t.id === templateId);
   if (!template) return null;
 
   const start_date = todayIn(user.timezone);
-  const base = db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS max FROM routines WHERE user_id = ?')
-    .get(user.id).max;
+  const base = (await db.prepare('SELECT COALESCE(MAX(sort_order), 0) AS max FROM routines WHERE user_id = ?')
+    .get(user.id)).max;
 
-  const stmt = db.prepare(INSERT);
-  tx(() => {
-    template.routines.forEach((item, index) => {
-      stmt.run({ ...DEFAULTS, ...item, user_id: user.id, start_date, sort_order: base + index + 1 });
-    });
+  await tx(async (t) => {
+    const insert = t.prepare(INSERT);
+    for (const [index, item] of template.routines.entries()) {
+      await insert.run({ ...DEFAULTS, ...item, user_id: user.id, start_date, sort_order: base + index + 1 });
+    }
   });
 
   return template.routines.length;
 }
 
 /** Small starter set applied at sign-up so the first dashboard isn't empty. */
-export function seedStarterRoutines(user) {
+export async function seedStarterRoutines(user) {
   const start_date = todayIn(user.timezone);
   const starters = [
     { title: 'Drink water',    icon: '💧', start_time: '08:00', duration_min: 2,  category: 'health',      color: '#0ea5e9', goal_type: 'quantity', target_value: 8, unit: 'glasses' },
@@ -134,10 +134,10 @@ export function seedStarterRoutines(user) {
     { title: 'Reflect on today',icon: '🌙', start_time: '22:00', duration_min: 5, category: 'mindfulness', color: '#a855f7' },
   ];
 
-  const stmt = db.prepare(INSERT);
-  tx(() => {
-    starters.forEach((item, index) => {
-      stmt.run({ ...DEFAULTS, ...item, user_id: user.id, start_date, sort_order: index + 1 });
-    });
+  await tx(async (t) => {
+    const insert = t.prepare(INSERT);
+    for (const [index, item] of starters.entries()) {
+      await insert.run({ ...DEFAULTS, ...item, user_id: user.id, start_date, sort_order: index + 1 });
+    }
   });
 }

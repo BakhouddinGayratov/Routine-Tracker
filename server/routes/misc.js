@@ -28,7 +28,7 @@ miscRouter.get('/templates', (_req, res) => {
 });
 
 miscRouter.post('/templates/:id/apply', asyncHandler(async (req, res) => {
-  const count = applyTemplate(req.user, req.params.id);
+  const count = await applyTemplate(req.user, req.params.id);
   if (count === null) throw ApiError.notFound('Template not found');
   res.status(201).json({ ok: true, created: count });
 }));
@@ -39,11 +39,11 @@ miscRouter.get('/export', asyncHandler(async (req, res) => {
     exported_at: new Date().toISOString(),
     format: 'routine-tracker/v1',
     user: publicUser(req.user),
-    goals: db.prepare('SELECT * FROM goals WHERE user_id = ? ORDER BY id').all(req.user.id),
-    routines: db.prepare('SELECT * FROM routines WHERE user_id = ? ORDER BY id').all(req.user.id),
-    logs: db.prepare('SELECT * FROM logs WHERE user_id = ? ORDER BY log_date').all(req.user.id),
-    journal: db.prepare('SELECT * FROM journal WHERE user_id = ? ORDER BY entry_date').all(req.user.id),
-    achievements: db.prepare('SELECT code, unlocked_at FROM achievements WHERE user_id = ?').all(req.user.id),
+    goals: (await db.prepare('SELECT * FROM goals WHERE user_id = ? ORDER BY id').all(req.user.id)),
+    routines: (await db.prepare('SELECT * FROM routines WHERE user_id = ? ORDER BY id').all(req.user.id)),
+    logs: (await db.prepare('SELECT * FROM logs WHERE user_id = ? ORDER BY log_date').all(req.user.id)),
+    journal: (await db.prepare('SELECT * FROM journal WHERE user_id = ? ORDER BY entry_date').all(req.user.id)),
+    achievements: (await db.prepare('SELECT code, unlocked_at FROM achievements WHERE user_id = ?').all(req.user.id)),
   };
 
   res.set('Content-Disposition', `attachment; filename="routine-tracker-${new Date().toISOString().slice(0, 10)}.json"`);
@@ -52,11 +52,11 @@ miscRouter.get('/export', asyncHandler(async (req, res) => {
 
 /** CSV export of the log history, for spreadsheets. */
 miscRouter.get('/export.csv', asyncHandler(async (req, res) => {
-  const rows = db.prepare(
+  const rows = (await db.prepare(
     `SELECT l.log_date, r.title, r.category, r.start_time, l.status, l.value, r.unit, l.note
      FROM logs l JOIN routines r ON r.id = l.routine_id
      WHERE l.user_id = ? ORDER BY l.log_date DESC, r.start_time`,
-  ).all(req.user.id);
+  ).all(req.user.id));
 
   const header = ['date', 'routine', 'category', 'time', 'status', 'value', 'unit', 'note'];
   const escape = (val) => {
@@ -78,16 +78,16 @@ miscRouter.get('/search', asyncHandler(async (req, res) => {
   if (q.length < 2) return res.json({ routines: [], journal: [] });
   const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`;
 
-  const routines = db.prepare(
+  const routines = (await db.prepare(
     `SELECT id, title, icon, color, category, start_time, archived FROM routines
      WHERE user_id = ? AND (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')
      ORDER BY archived, title LIMIT 12`,
-  ).all(req.user.id, like, like, like);
+  ).all(req.user.id, like, like, like));
 
-  const journal = db.prepare(
+  const journal = (await db.prepare(
     `SELECT entry_date, mood, substr(body, 1, 140) AS excerpt FROM journal
      WHERE user_id = ? AND body LIKE ? ESCAPE '\\' ORDER BY entry_date DESC LIMIT 8`,
-  ).all(req.user.id, like);
+  ).all(req.user.id, like));
 
   res.json({ routines: routines.map((r) => ({ ...r, archived: !!r.archived })), journal });
 }));

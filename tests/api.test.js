@@ -7,15 +7,17 @@
  *   node tests/api.test.js
  */
 import fs from 'node:fs';
+import zlib from 'node:zlib';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dbFile = path.join(here, '..', 'data', `test-${Date.now()}.sqlite`);
 
 process.env.NODE_ENV = 'test';
-process.env.DATABASE_PATH = dbFile;
+// No DATABASE_URL: db/driver.js then runs PGlite, an in-memory PostgreSQL, so
+// the tests exercise the same SQL the deployed database will run.
+delete process.env.DATABASE_URL;
 process.env.PORT = '4310';
 process.env.JWT_SECRET = 'test-secret-not-used-in-production';
 
@@ -451,7 +453,7 @@ await test('a subscription the push service reports gone is removed', async () =
   await api('POST', '/api/routines', { title: 'Gone', start_time: '12:00', reminder_min: 0, repeat_type: 'once', start_date: todayUtc });
   const result = await runReminders({ now: new Date(`${todayUtc}T12:00:30Z`), send: async () => ({ ok: false, gone: true, status: 410 }) });
   assert.ok(result.removed >= 1);
-  const left = db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint = ?').get(subscription.endpoint).n;
+  const left = (await db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE endpoint = ?').get(subscription.endpoint)).n;
   assert.equal(left, 0);
 });
 
@@ -612,59 +614,65 @@ await test('deleting an account removes all of its data', async () => {
 
 // --- Database settings and backups ---------------------------------------
 
-const { backupDatabase } = await import('../server/db/backup.js');
-const { selectDriver } = await import('../server/db/driver.js');
+const { backupDatabase, snapshot, TABLES } = await import('../server/db/backup.js');
 const backupDir = path.join(here, '..', 'data', `test-backups-${Date.now()}`);
-const pragma = (name) => Object.values(db.prepare(`PRAGMA ${name}`).get())[0];
+await test('the database is PostgreSQL and enforces its foreign keys', async () => {
+  const { version } = await db.prepare('SELECT version() AS version').get();
+  assert.match(version, /PostgreSQL/);
 
-await test('the database runs with WAL, foreign keys and a busy timeout', async () => {
-  assert.equal(String(pragma('journal_mode')).toLowerCase(), 'wal');
-  assert.equal(Number(pragma('foreign_keys')), 1);
-  assert.equal(Number(pragma('busy_timeout')), 5000);
+  // A routine pointing at a user that does not exist must be refused; the app
+  // leans on ON DELETE CASCADE to make account deletion one statement.
+  await assert.rejects(
+    db.prepare("INSERT INTO routines (user_id, title, start_date) VALUES (?, 'orphan', '2026-01-01')").run(999999),
+    /foreign key|violates/i,
+  );
 });
 
-await test('a daily backup is a readable, complete copy of the database', async () => {
-  const { created } = backupDatabase(db, { dir: backupDir, now: new Date(2026, 8, 18, 12) });
-  assert.ok(created && fs.existsSync(created), 'backup file should exist');
-  assert.equal(path.basename(created), 'routine-tracker-2026-09-18.sqlite');
-
-  const driver = await selectDriver(process.env.DATABASE_DRIVER || 'auto');
-  const copy = driver.open(created);
-  try {
-    for (const table of ['users', 'routines', 'logs', 'goals', 'journal']) {
-      const live = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
-      const saved = copy.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n;
-      assert.equal(saved, live, `${table} row count should match`);
-    }
-  } finally {
-    copy.close();
+await test('every table the backup names exists', async () => {
+  for (const table of TABLES) {
+    const row = await db.prepare('SELECT to_regclass(?) AS found').get(table);
+    assert.ok(row.found, `table ${table} is missing`);
   }
 });
 
+await test('a daily backup holds every row of every table', async () => {
+  const { created } = await backupDatabase(db, { dir: backupDir, now: new Date(2026, 8, 18, 12), upload: async () => false });
+  assert.ok(created && fs.existsSync(created), 'backup file should exist');
+  assert.equal(path.basename(created), 'routine-tracker-2026-09-18.json.gz');
+
+  const saved = JSON.parse(zlib.gunzipSync(fs.readFileSync(created)));
+  assert.equal(saved.format, 'routine-tracker/backup-v1');
+  for (const table of ['users', 'routines', 'logs', 'goals', 'journal']) {
+    const live = (await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).n;
+    assert.equal(saved.tables[table].length, live, `${table} row count should match`);
+  }
+});
+
+await test('a backup keeps the data itself, not just the row counts', async () => {
+  const taken = await snapshot(db);
+  const live = await db.prepare('SELECT id, email, name FROM users ORDER BY id').all();
+  assert.deepEqual(taken.tables.users.map((u) => ({ id: u.id, email: u.email, name: u.name })), live);
+});
+
 await test('a second backup on the same day is skipped', async () => {
-  const { created } = backupDatabase(db, { dir: backupDir, now: new Date(2026, 8, 18, 20) });
+  const { created } = await backupDatabase(db, { dir: backupDir, now: new Date(2026, 8, 18, 20), upload: async () => false });
   assert.equal(created, null);
 });
 
 await test('only the newest seven daily backups are kept', async () => {
   for (let day = 19; day <= 27; day += 1) {
-    backupDatabase(db, { dir: backupDir, keep: 7, now: new Date(2026, 8, day, 12) });
+    await backupDatabase(db, { dir: backupDir, keep: 7, now: new Date(2026, 8, day, 12), upload: async () => false });
   }
-  const kept = fs.readdirSync(backupDir).filter((n) => n.endsWith('.sqlite')).sort();
+  const kept = fs.readdirSync(backupDir).filter((n) => n.endsWith('.json.gz')).sort();
   assert.equal(kept.length, 7);
-  assert.equal(kept[0], 'routine-tracker-2026-09-21.sqlite');
-  assert.equal(kept[6], 'routine-tracker-2026-09-27.sqlite');
+  assert.equal(kept[0], 'routine-tracker-2026-09-21.json.gz');
+  assert.equal(kept[6], 'routine-tracker-2026-09-27.json.gz');
   assert.ok(!fs.readdirSync(backupDir).some((n) => n.endsWith('.tmp')), 'no temp files left behind');
 });
 
 console.log(`\n  ${passed} passed, ${failed} failed\n`);
 
-// Windows keeps a lock on an open database file, so the connection has to be
-// closed before the throwaway database can be removed.
-db.close();
+await db.close();
 fs.rmSync(backupDir, { recursive: true, force: true });
 
-for (const file of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
-  if (fs.existsSync(file)) fs.unlinkSync(file);
-}
 process.exit(failed ? 1 : 0);

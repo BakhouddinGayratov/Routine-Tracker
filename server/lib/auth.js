@@ -21,11 +21,11 @@ export async function verifyPassword(plain, hash) {
  * change, "sign out everywhere") invalidates the token immediately instead of
  * waiting for it to expire.
  */
-export function issueToken(user, userAgent = '') {
+export async function issueToken(user, userAgent = '') {
   const sessionId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + parseDuration(config.jwtExpiresIn)).toISOString();
 
-  db.prepare(
+  (await db.prepare(
     `INSERT INTO sessions (id, user_id, user_agent, expires_at)
      VALUES (@id, @user_id, @user_agent, @expires_at)`,
   ).run({
@@ -33,7 +33,7 @@ export function issueToken(user, userAgent = '') {
     user_id: user.id,
     user_agent: String(userAgent).slice(0, 250),
     expires_at: expiresAt.slice(0, 19) + 'Z',
-  });
+  }));
 
   const token = jwt.sign({ sub: user.id, sid: sessionId }, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn,
@@ -42,15 +42,15 @@ export function issueToken(user, userAgent = '') {
   return { token, sessionId, expiresAt };
 }
 
-export function revokeSession(sessionId) {
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId);
+export async function revokeSession(sessionId) {
+  (await db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId));
 }
 
-export function revokeAllSessions(userId, exceptSessionId = null) {
+export async function revokeAllSessions(userId, exceptSessionId = null) {
   if (exceptSessionId) {
-    db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(userId, exceptSessionId);
+    (await db.prepare('DELETE FROM sessions WHERE user_id = ? AND id != ?').run(userId, exceptSessionId));
   } else {
-    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+    (await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId));
   }
 }
 

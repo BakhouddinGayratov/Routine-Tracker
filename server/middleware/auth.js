@@ -7,7 +7,7 @@ import { verifyToken } from '../lib/auth.js';
  * the browser client uses so the token is never readable from JavaScript).
  * Attaches `req.user` and `req.sessionId`.
  */
-export function requireAuth(req, _res, next) {
+export async function requireAuth(req, _res, next) {
   try {
     const header = req.get('authorization') || '';
     const bearer = header.startsWith('Bearer ') ? header.slice(7).trim() : null;
@@ -21,18 +21,18 @@ export function requireAuth(req, _res, next) {
       throw ApiError.unauthorized('Your session has expired, please sign in again');
     }
 
-    const session = db
-      .prepare("SELECT * FROM sessions WHERE id = ? AND expires_at > strftime('%Y-%m-%dT%H:%M:%SZ','now')")
+    const session = await db
+      .prepare('SELECT * FROM sessions WHERE id = ? AND expires_at > utc_now()')
       .get(payload.sid);
     if (!session || session.user_id !== payload.sub) {
       throw ApiError.unauthorized('Your session has expired, please sign in again');
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(payload.sub);
+    const user = (await db.prepare('SELECT * FROM users WHERE id = ?').get(payload.sub));
     if (!user) throw ApiError.unauthorized();
 
     // Cheap "last seen" tracking; one write per request is fine at this scale.
-    db.prepare("UPDATE sessions SET last_seen = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?").run(session.id);
+    (await db.prepare("UPDATE sessions SET last_seen = utc_now() WHERE id = ?").run(session.id));
 
     req.user = user;
     req.sessionId = session.id;

@@ -1,108 +1,88 @@
 /**
- * Database driver selection.
+ * Database driver selection (PostgreSQL).
  *
- * Node 22.13+ ships SQLite in the runtime (`node:sqlite`), so the app needs no
- * native module, no compiler and no prebuilt binary — `npm install` stays pure
- * JavaScript and `npm start` works on any platform.
+ * Two drivers, one SQL dialect:
  *
- * `better-sqlite3` is still supported as a fallback for older runtimes, but it
- * is not a declared dependency: install it yourself if you need it.
+ *   - `pg` against a real server (Supabase in production) whenever
+ *     DATABASE_URL is set.
+ *   - PGlite, Postgres itself compiled to WebAssembly, when it is not. The
+ *     test suite runs on this: same engine, same SQL, no server to install
+ *     and no container to start, so `npm test` still works anywhere.
  *
- * Set DATABASE_DRIVER to `node` or `better-sqlite3` to pin one explicitly;
- * the default, `auto`, prefers the built-in.
+ * Both are wrapped to a single tiny interface — `query(sql, params)`,
+ * `exec(sql)`, `reserve()`, `end()` — so db/index.js never branches on which
+ * one it got.
  */
 
-/** @returns {{ open: (path: string) => object, name: string }} */
-export async function selectDriver(preference = 'auto') {
-  const wantNode = preference === 'auto' || preference === 'node';
-  const wantBetter = preference === 'auto' || preference === 'better-sqlite3';
-
-  if (wantNode) {
-    const builtin = await loadBuiltin();
-    if (builtin) return builtin;
-    if (preference === 'node') {
-      throw new Error(
-        'DATABASE_DRIVER=node was requested, but this Node build has no node:sqlite. ' +
-        `Node 22.13 or newer is required (running ${process.version}).`,
-      );
-    }
-  }
-
-  if (wantBetter) {
-    const native = await loadBetterSqlite3();
-    if (native) return native;
-
-    if (preference === 'better-sqlite3') {
-      throw new Error(
-        'DATABASE_DRIVER=better-sqlite3 was requested, but the module could not be loaded.\n' +
-        '  Either install it (npm install better-sqlite3), or unset DATABASE_DRIVER to use\n' +
-        "  Node's built-in node:sqlite, which needs no native build.",
-      );
-    }
-  }
-
-  // Reached only when the runtime has no node:sqlite and no fallback is installed.
-  throw new Error(
-    'No SQLite driver available.\n' +
-    `  This Node (${process.version}) has no built-in node:sqlite, which needs Node 22.13 or newer.\n` +
-    '  Either upgrade Node (https://nodejs.org), or install the fallback driver:\n' +
-    '      npm install better-sqlite3',
-  );
+/** @returns {Promise<{ name: string, query: Function, exec: Function, reserve: Function, end: Function }>} */
+export async function selectDriver(connectionString) {
+  return connectionString ? postgres(connectionString) : pglite();
 }
 
-async function loadBuiltin() {
-  const restore = muteSqliteExperimentalWarning();
-  try {
-    const { DatabaseSync } = await import('node:sqlite');
-    if (typeof DatabaseSync !== 'function') return null;
-    return {
-      name: 'node:sqlite',
-      open: (path) => new DatabaseSync(path),
-    };
-  } catch {
-    return null;   // older Node, or the module is behind a flag
-  } finally {
-    // Node emits the notice while the module loads; anything later is unrelated
-    // and should be printed normally.
-    restore();
-  }
+// Postgres counts (COUNT, SUM) come back as bigint, which both drivers hand
+// over as a string — "10" instead of 10 — because a bigint can outgrow a JS
+// number. Every count in this app is small, and the code compares and adds
+// them as numbers, so they are parsed back to numbers in one place.
+const INT8 = 20;
+
+async function postgres(connectionString) {
+  const { default: pg } = await import('pg');
+  pg.types.setTypeParser(INT8, Number);
+
+  // Supabase (and most managed Postgres) require TLS. sslmode in the URL wins;
+  // otherwise TLS is on with the platform's certificate chain unaccepted only
+  // if PGSSLROOTCERT is supplied — see MIGRATION_SUPABASE.md.
+  const ssl = /sslmode=/.test(connectionString)
+    ? undefined
+    : { rejectUnauthorized: Boolean(process.env.PGSSLROOTCERT), ca: process.env.PGSSLROOTCERT || undefined };
+
+  const pool = new pg.Pool({
+    connectionString,
+    ssl,
+    max: Number(process.env.PGPOOL_MAX) || 5,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 10_000,
+  });
+
+  // A pool error (the server closed an idle connection) must not crash the
+  // process; the next query simply opens a new one.
+  pool.on('error', (err) => console.error(`  database pool: ${err.message}`));
+
+  return {
+    name: 'postgres',
+    query: (sql, params) => pool.query(sql, params),
+    exec: (sql) => pool.query(sql),
+    // One dedicated connection, which a transaction needs: BEGIN and COMMIT
+    // must run on the same one.
+    reserve: async () => {
+      const client = await pool.connect();
+      return {
+        query: (sql, params) => client.query(sql, params),
+        exec: (sql) => client.query(sql),
+        release: () => client.release(),
+      };
+    },
+    end: () => pool.end(),
+  };
 }
 
-async function loadBetterSqlite3() {
-  try {
-    const { default: Database } = await import('better-sqlite3');
-    return {
-      name: 'better-sqlite3',
-      open: (path) => new Database(path),
-    };
-  } catch {
-    return null;   // not installed, or its native binding failed to load
-  }
-}
+async function pglite() {
+  const { PGlite } = await import('@electric-sql/pglite');
+  const db = await PGlite.create(process.env.PGLITE_DATA_DIR || undefined);
 
-/**
- * Hide Node's "SQLite is an experimental feature" notice while the module loads.
- *
- * The surface this app uses (open, prepare, run/get/all, exec) has been stable
- * since node:sqlite was unflagged, so the notice only worries the person
- * running the app. It has to be done by wrapping `process.emitWarning`: a
- * 'warning' listener does *not* replace Node's default printing.
- *
- * Only that one warning is swallowed — every other warning is forwarded
- * untouched — and the original function is restored as soon as the import is
- * done, so nothing else is ever hidden.
- *
- * @returns {() => void} restores the original `process.emitWarning`
- */
-function muteSqliteExperimentalWarning() {
-  const original = process.emitWarning;
-
-  process.emitWarning = (warning, ...rest) => {
-    const text = typeof warning === 'string' ? warning : warning?.message ?? '';
-    const type = typeof rest[0] === 'string' ? rest[0] : rest[0]?.type;
-    if (type === 'ExperimentalWarning' && /sqlite/i.test(text)) return;
-    return original.call(process, warning, ...rest);
+  const parsers = { [INT8]: Number };
+  const run = async (sql, params) => {
+    const result = await db.query(sql, params, { parsers });
+    // PGlite reports affected rows as `affectedRows`; pg calls it `rowCount`.
+    return { rows: result.rows || [], rowCount: result.affectedRows ?? (result.rows?.length || 0) };
   };
 
-  return () => { process.emitWarning = original; };
+  return {
+    name: 'pglite',
+    query: run,
+    exec: (sql) => db.exec(sql),
+    // PGlite is a single connection, so it is already "reserved".
+    reserve: async () => ({ query: run, exec: (sql) => db.exec(sql), release: () => {} }),
+    end: () => db.close(),
+  };
 }

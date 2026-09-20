@@ -33,15 +33,16 @@ authRouter.post('/register', registerLimiter, asyncHandler(async (req, res) => {
     locale: { rule: v.oneOf(['en', 'uz', 'ru']), default: 'en' },
   });
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(data.email);
+  const existing = (await db.prepare('SELECT id FROM users WHERE email = ?').get(data.email));
   if (existing) throw ApiError.conflict('An account with this email already exists');
 
   const password_hash = await hashPassword(data.password);
   const palette = ['#6366f1', '#ec4899', '#14b8a6', '#f59e0b', '#8b5cf6', '#ef4444', '#22c55e'];
 
-  const info = db.prepare(
+  const info = (await db.prepare(
     `INSERT INTO users (email, name, password_hash, timezone, locale, avatar_color)
-     VALUES (@email, @name, @password_hash, @timezone, @locale, @avatar_color)`,
+     VALUES (@email, @name, @password_hash, @timezone, @locale, @avatar_color)
+     RETURNING id`,
   ).run({
     email: data.email,
     name: data.name,
@@ -49,15 +50,15 @@ authRouter.post('/register', registerLimiter, asyncHandler(async (req, res) => {
     timezone: data.timezone || 'UTC',
     locale: data.locale,
     avatar_color: palette[Math.floor(Math.random() * palette.length)],
-  });
+  }));
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
+  const user = (await db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid));
 
   // A brand new account with an empty dashboard is a dead end; give people a
   // small, obviously-editable starter set so the app explains itself.
-  seedStarterRoutines(user);
+  await seedStarterRoutines(user);
 
-  const { token } = issueToken(user, req.get('user-agent'));
+  const { token } = await issueToken(user, req.get('user-agent'));
   res.cookie('token', token, COOKIE);
   res.status(201).json({ user: publicUser(user), token });
 }));
@@ -68,7 +69,7 @@ authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
     password: v.string({ min: 1, max: 200, trim: false }),
   });
 
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(data.email);
+  const user = (await db.prepare('SELECT * FROM users WHERE email = ?').get(data.email));
   // Same message and comparable timing for "no such user" and "wrong password"
   // so the endpoint can't be used to enumerate registered emails.
   const ok = user
@@ -77,16 +78,16 @@ authRouter.post('/login', loginLimiter, asyncHandler(async (req, res) => {
 
   if (!user || !ok) throw ApiError.unauthorized('Email or password is incorrect');
 
-  const { token } = issueToken(user, req.get('user-agent'));
+  const { token } = await issueToken(user, req.get('user-agent'));
   res.cookie('token', token, COOKIE);
   res.json({ user: publicUser(user), token });
 }));
 
-authRouter.post('/logout', requireAuth, (req, res) => {
-  revokeSession(req.sessionId);
+authRouter.post('/logout', requireAuth, asyncHandler(async (req, res) => {
+  await revokeSession(req.sessionId);
   res.clearCookie('token', { ...COOKIE, maxAge: undefined });
   res.json({ ok: true });
-});
+}));
 
 authRouter.get('/me', requireAuth, (req, res) => {
   res.json({ user: publicUser(req.user) });
@@ -107,11 +108,11 @@ authRouter.patch('/me', requireAuth, asyncHandler(async (req, res) => {
   if (Object.keys(data).length === 0) throw ApiError.badRequest('Nothing to update');
 
   const sets = Object.keys(data).map((k) => `${k} = @${k}`).join(', ');
-  db.prepare(
-    `UPDATE users SET ${sets}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = @id`,
-  ).run({ ...data, id: req.user.id });
+  (await db.prepare(
+    `UPDATE users SET ${sets}, updated_at = utc_now() WHERE id = @id`,
+  ).run({ ...data, id: req.user.id }));
 
-  res.json({ user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)) });
+  res.json({ user: publicUser((await db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id))) });
 }));
 
 authRouter.post('/password', requireAuth, asyncHandler(async (req, res) => {
@@ -123,26 +124,26 @@ authRouter.post('/password', requireAuth, asyncHandler(async (req, res) => {
   const ok = await verifyPassword(data.current_password, req.user.password_hash);
   if (!ok) throw ApiError.badRequest('Your current password is incorrect', { current_password: 'Incorrect password' });
 
-  db.prepare(
-    "UPDATE users SET password_hash = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?",
-  ).run(await hashPassword(data.new_password), req.user.id);
+  (await db.prepare(
+    "UPDATE users SET password_hash = ?, updated_at = utc_now() WHERE id = ?",
+  ).run(await hashPassword(data.new_password), req.user.id));
 
   // Other devices keep a token minted with the old password — cut them off.
-  revokeAllSessions(req.user.id, req.sessionId);
+  await revokeAllSessions(req.user.id, req.sessionId);
   res.json({ ok: true });
 }));
 
-authRouter.get('/sessions', requireAuth, (req, res) => {
-  const rows = db.prepare(
+authRouter.get('/sessions', requireAuth, asyncHandler(async (req, res) => {
+  const rows = (await db.prepare(
     'SELECT id, user_agent, created_at, last_seen, expires_at FROM sessions WHERE user_id = ? ORDER BY last_seen DESC',
-  ).all(req.user.id);
+  ).all(req.user.id));
   res.json({ sessions: rows.map((s) => ({ ...s, current: s.id === req.sessionId })) });
-});
+}));
 
-authRouter.delete('/sessions/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM sessions WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+authRouter.delete('/sessions/:id', requireAuth, asyncHandler(async (req, res) => {
+  await db.prepare('DELETE FROM sessions WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
   res.json({ ok: true });
-});
+}));
 
 authRouter.delete('/me', requireAuth, asyncHandler(async (req, res) => {
   const data = validate(req.body, { password: v.string({ min: 1, max: 200, trim: false }) });
@@ -150,7 +151,7 @@ authRouter.delete('/me', requireAuth, asyncHandler(async (req, res) => {
   if (!ok) throw ApiError.badRequest('Password is incorrect', { password: 'Incorrect password' });
 
   // ON DELETE CASCADE removes routines, logs, journal, achievements, sessions.
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id);
+  (await db.prepare('DELETE FROM users WHERE id = ?').run(req.user.id));
   res.clearCookie('token', { ...COOKIE, maxAge: undefined });
   res.json({ ok: true });
 }));

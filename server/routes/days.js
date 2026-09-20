@@ -9,8 +9,8 @@ import { buildDailySeries, computeStreak, round } from '../lib/stats.js';
 
 export const daysRouter = express.Router();
 
-function activeRoutines(userId) {
-  return db.prepare('SELECT * FROM routines WHERE user_id = ? AND archived = 0').all(userId);
+async function activeRoutines(userId) {
+  return (await db.prepare('SELECT * FROM routines WHERE user_id = ? AND archived = 0').all(userId));
 }
 
 /**
@@ -21,9 +21,9 @@ daysRouter.get('/:date', asyncHandler(async (req, res) => {
   const date = req.params.date === 'today' ? todayIn(req.user.timezone) : req.params.date;
   if (!isValidDate(date)) throw ApiError.badRequest('Invalid date');
 
-  const routines = activeRoutines(req.user.id);
+  const routines = await activeRoutines(req.user.id);
   const due = dueOn(routines, date);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date = ?').all(req.user.id, date);
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date = ?').all(req.user.id, date));
   const logByRoutine = new Map(logs.map((l) => [l.routine_id, l]));
 
   const items = due.map((routine) => {
@@ -40,12 +40,12 @@ daysRouter.get('/:date', asyncHandler(async (req, res) => {
 
   const doneCount = items.filter((i) => i.status === 'done').length;
   const skipped = items.filter((i) => i.status === 'skipped').length;
-  const journal = db.prepare('SELECT * FROM journal WHERE user_id = ? AND entry_date = ?').get(req.user.id, date) || null;
+  const journal = (await db.prepare('SELECT * FROM journal WHERE user_id = ? AND entry_date = ?').get(req.user.id, date)) || null;
 
   // 90 days of context is enough for the streak shown on the day header.
   const windowStart = addDays(date, -120);
-  const rangeLogs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
-    .all(req.user.id, windowStart, date);
+  const rangeLogs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
+    .all(req.user.id, windowStart, date));
   const series = buildDailySeries(routines, rangeLogs, windowStart, date);
   const streak = computeStreak(series, req.user.daily_goal, todayIn(req.user.timezone));
 
@@ -81,9 +81,9 @@ daysRouter.get('/:date/week', asyncHandler(async (req, res) => {
   const from = addDays(date, -offset);
   const to = addDays(from, 6);
 
-  const routines = activeRoutines(req.user.id);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
-    .all(req.user.id, from, to);
+  const routines = await activeRoutines(req.user.id);
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
+    .all(req.user.id, from, to));
 
   res.json({ from, to, days: buildDailySeries(routines, logs, from, to) });
 }));
@@ -96,11 +96,11 @@ daysRouter.get('/month/:year/:month', asyncHandler(async (req, res) => {
   if (!Number.isInteger(month) || month < 1 || month > 12) throw ApiError.badRequest('Invalid month');
 
   const { first, last } = monthBounds(year, month);
-  const routines = activeRoutines(req.user.id);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
-    .all(req.user.id, first, last);
-  const journal = db.prepare('SELECT entry_date, mood, energy FROM journal WHERE user_id = ? AND entry_date BETWEEN ? AND ?')
-    .all(req.user.id, first, last);
+  const routines = await activeRoutines(req.user.id);
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
+    .all(req.user.id, first, last));
+  const journal = (await db.prepare('SELECT entry_date, mood, energy FROM journal WHERE user_id = ? AND entry_date BETWEEN ? AND ?')
+    .all(req.user.id, first, last));
   const moodByDate = new Map(journal.map((j) => [j.entry_date, j]));
 
   const days = buildDailySeries(routines, logs, first, last).map((d) => ({
@@ -127,8 +127,8 @@ daysRouter.post('/log', asyncHandler(async (req, res) => {
     note: { rule: v.string({ max: 500 }), default: '' },
   });
 
-  const routine = db.prepare('SELECT * FROM routines WHERE id = ? AND user_id = ?')
-    .get(data.routine_id, req.user.id);
+  const routine = (await db.prepare('SELECT * FROM routines WHERE id = ? AND user_id = ?')
+    .get(data.routine_id, req.user.id));
   if (!routine) throw ApiError.notFound('Routine not found');
   if (!isDueOn(routine, data.date)) {
     throw ApiError.badRequest('This routine is not scheduled for that day');
@@ -137,7 +137,7 @@ daysRouter.post('/log', asyncHandler(async (req, res) => {
   // 'pending' means "clear the log" — that keeps un-checking a box a single,
   // obvious operation for the client.
   if (data.status === 'pending') {
-    db.prepare('DELETE FROM logs WHERE routine_id = ? AND log_date = ?').run(routine.id, data.date);
+    (await db.prepare('DELETE FROM logs WHERE routine_id = ? AND log_date = ?').run(routine.id, data.date));
     return res.json({ log: null, status: 'pending' });
   }
 
@@ -151,14 +151,14 @@ daysRouter.post('/log', asyncHandler(async (req, res) => {
     value = status === 'done' ? 1 : 0;
   }
 
-  db.prepare(
+  (await db.prepare(
     `INSERT INTO logs (routine_id, user_id, log_date, status, value, note)
      VALUES (@routine_id, @user_id, @log_date, @status, @value, @note)
      ON CONFLICT (routine_id, log_date) DO UPDATE SET
        status = excluded.status,
        value = excluded.value,
        note = excluded.note,
-       completed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
+       completed_at = utc_now()`,
   ).run({
     routine_id: routine.id,
     user_id: req.user.id,
@@ -166,9 +166,9 @@ daysRouter.post('/log', asyncHandler(async (req, res) => {
     status,
     value,
     note: data.note,
-  });
+  }));
 
-  const log = db.prepare('SELECT * FROM logs WHERE routine_id = ? AND log_date = ?').get(routine.id, data.date);
+  const log = (await db.prepare('SELECT * FROM logs WHERE routine_id = ? AND log_date = ?').get(routine.id, data.date));
   res.json({ log, status });
 }));
 
@@ -177,17 +177,16 @@ daysRouter.post('/:date/complete-all', asyncHandler(async (req, res) => {
   const date = req.params.date === 'today' ? todayIn(req.user.timezone) : req.params.date;
   if (!isValidDate(date)) throw ApiError.badRequest('Invalid date');
 
-  const due = dueOn(activeRoutines(req.user.id), date);
-  const stmt = db.prepare(
-    `INSERT INTO logs (routine_id, user_id, log_date, status, value)
-     VALUES (?, ?, ?, 'done', ?)
-     ON CONFLICT (routine_id, log_date) DO UPDATE SET
-       status = 'done', value = excluded.value,
-       completed_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')`,
-  );
-
-  tx(() => {
-    for (const r of due) stmt.run(r.id, req.user.id, date, r.goal_type === 'quantity' ? r.target_value : 1);
+  const due = dueOn(await activeRoutines(req.user.id), date);
+  await tx(async (t) => {
+    const stmt = t.prepare(
+      `INSERT INTO logs (routine_id, user_id, log_date, status, value)
+       VALUES (?, ?, ?, 'done', ?)
+       ON CONFLICT (routine_id, log_date) DO UPDATE SET
+         status = 'done', value = excluded.value,
+         completed_at = utc_now()`,
+    );
+    for (const r of due) await stmt.run(r.id, req.user.id, date, r.goal_type === 'quantity' ? r.target_value : 1);
   });
 
   res.json({ ok: true, count: due.length });
@@ -199,22 +198,21 @@ daysRouter.post('/:date/copy-from', asyncHandler(async (req, res) => {
   const source = String(req.body?.source || '');
   if (!isValidDate(target) || !isValidDate(source)) throw ApiError.badRequest('Invalid date');
 
-  const routines = activeRoutines(req.user.id);
-  const sourceLogs = db.prepare("SELECT * FROM logs WHERE user_id = ? AND log_date = ? AND status = 'done'")
-    .all(req.user.id, source);
+  const routines = await activeRoutines(req.user.id);
+  const sourceLogs = (await db.prepare("SELECT * FROM logs WHERE user_id = ? AND log_date = ? AND status = 'done'")
+    .all(req.user.id, source));
   const dueIds = new Set(dueOn(routines, target).map((r) => r.id));
 
-  const stmt = db.prepare(
-    `INSERT INTO logs (routine_id, user_id, log_date, status, value)
-     VALUES (?, ?, ?, 'done', ?)
-     ON CONFLICT (routine_id, log_date) DO UPDATE SET status = 'done', value = excluded.value`,
-  );
-
   let count = 0;
-  tx(() => {
+  await tx(async (t) => {
+    const stmt = t.prepare(
+      `INSERT INTO logs (routine_id, user_id, log_date, status, value)
+       VALUES (?, ?, ?, 'done', ?)
+       ON CONFLICT (routine_id, log_date) DO UPDATE SET status = 'done', value = excluded.value`,
+    );
     for (const log of sourceLogs) {
       if (!dueIds.has(log.routine_id)) continue;   // not scheduled on the target day
-      stmt.run(log.routine_id, req.user.id, target, log.value);
+      await stmt.run(log.routine_id, req.user.id, target, log.value);
       count += 1;
     }
   });
@@ -227,9 +225,9 @@ daysRouter.get('/upcoming/list', asyncHandler(async (req, res) => {
   const days = Math.min(30, Math.max(1, Number(req.query.days) || 7));
   const today = todayIn(req.user.timezone);
   const to = addDays(today, days - 1);
-  const routines = activeRoutines(req.user.id);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
-    .all(req.user.id, today, to);
+  const routines = await activeRoutines(req.user.id);
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
+    .all(req.user.id, today, to));
   const logged = new Set(logs.map((l) => `${l.routine_id}:${l.log_date}`));
 
   const out = [];

@@ -1,21 +1,36 @@
 /**
  * Daily database backups (TZ MS-05).
  *
- * One file per day in the backup folder, named by date, keeping the newest
- * `keep` (7 by default) and deleting older ones:
+ * Supabase's free plan takes no backups of its own — its documentation tells
+ * free projects to export their data themselves — so the app does it: one
+ * gzipped JSON snapshot of every table per day, oldest ones pruned.
  *
- *   data/backups/routine-tracker-2026-09-18.sqlite
+ *   data/backups/routine-tracker-2026-09-20.json.gz
  *
- * To restore: stop the server, copy the chosen backup over
- * data/routine-tracker.sqlite, delete routine-tracker.sqlite-wal and -shm next
- * to it, and start the server again.
+ * A snapshot is written to disk and, when object storage is configured,
+ * uploaded there as well. That matters on a host with an ephemeral disk
+ * (Render), where a local file disappears on the next deploy: BACKUP_BUCKET
+ * with SUPABASE_URL and SUPABASE_SERVICE_KEY sends it to Supabase Storage.
+ *
+ * To restore: `node scripts/restore-backup.mjs <file>`.
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
+import { promisify } from 'node:util';
+
+const gzip = promisify(zlib.gzip);
 
 const PREFIX = 'routine-tracker-';
-const BACKUP_NAME = /^routine-tracker-(\d{4}-\d{2}-\d{2})\.sqlite$/;
+const BACKUP_NAME = /^routine-tracker-(\d{4}-\d{2}-\d{2})\.json\.gz$/;
 const HOUR = 60 * 60 * 1000;
+
+// Every table that holds user data, parents before children so a restore can
+// insert them in this order without tripping a foreign key.
+export const TABLES = [
+  'users', 'goals', 'routines', 'logs', 'journal',
+  'achievements', 'sessions', 'push_subscriptions', 'reminders_sent',
+];
 
 /** The server's own calendar date — a backup belongs to the day it was taken. */
 function localDate(now) {
@@ -23,38 +38,40 @@ function localDate(now) {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/** Every row of every table, as one JSON document. */
+export async function snapshot(db) {
+  const data = {};
+  for (const table of TABLES) {
+    data[table] = await db.prepare(`SELECT * FROM ${table}`).all();
+  }
+  return { format: 'routine-tracker/backup-v1', taken_at: new Date().toISOString(), tables: data };
+}
+
 /**
  * Take today's backup if there is none yet, then prune to the newest `keep`.
  *
- * The copy is made with SQLite's `VACUUM INTO`, not a file copy: the database
- * runs in WAL mode, so the main file alone can be missing committed rows that
- * still live in the -wal file, and a copy taken during a write can catch it
- * half-done. VACUUM INTO writes one transactionally consistent snapshot.
- *
- * It writes to a temporary name and renames at the end, so a crash half-way
- * never leaves a truncated file that looks like a good backup.
- *
- * @param {object} db   an open database handle (either driver)
- * @param {{ dir: string, keep?: number, now?: Date }} options
- * @returns {{ created: string|null, removed: string[] }}
+ * @param {object} db
+ * @param {{ dir: string, keep?: number, now?: Date, upload?: Function }} options
+ * @returns {Promise<{ created: string|null, removed: string[], uploaded: boolean }>}
  */
-export function backupDatabase(db, { dir, keep = 7, now = new Date() }) {
+export async function backupDatabase(db, { dir, keep = 7, now = new Date(), upload = uploadToStorage }) {
   fs.mkdirSync(dir, { recursive: true });
 
-  const target = path.join(dir, `${PREFIX}${localDate(now)}.sqlite`);
-  let created = null;
+  const name = `${PREFIX}${localDate(now)}.json.gz`;
+  const target = path.join(dir, name);
+  if (fs.existsSync(target)) return { created: null, removed: prune(dir, keep), uploaded: false };
 
-  if (!fs.existsSync(target)) {
-    const temp = `${target}.tmp`;
-    fs.rmSync(temp, { force: true });
-    // The path comes from server config, never from a request, but it is still
-    // quoted properly: a folder name with an apostrophe must not break the SQL.
-    db.exec(`VACUUM INTO '${temp.replace(/'/g, "''")}'`);
-    fs.renameSync(temp, target);
-    created = target;
-  }
+  const body = await gzip(JSON.stringify(await snapshot(db)));
 
-  return { created, removed: prune(dir, keep) };
+  // Write to a temporary name and rename, so a crash half-way never leaves a
+  // truncated file that looks like a good backup.
+  const temp = `${target}.tmp`;
+  fs.rmSync(temp, { force: true });
+  fs.writeFileSync(temp, body);
+  fs.renameSync(temp, target);
+
+  const uploaded = await upload(name, body).catch(() => false);
+  return { created: target, removed: prune(dir, keep), uploaded };
 }
 
 /** Delete all but the newest `keep` backups. ISO dates sort chronologically. */
@@ -66,6 +83,29 @@ function prune(dir, keep) {
 }
 
 /**
+ * Send a snapshot to Supabase Storage. Returns false when storage is not
+ * configured, which is the normal case on a machine that keeps its own disk.
+ */
+async function uploadToStorage(name, body) {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  const bucket = process.env.BACKUP_BUCKET;
+  if (!url || !key || !bucket) return false;
+
+  const res = await fetch(`${url.replace(/\/$/, '')}/storage/v1/object/${bucket}/${name}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/gzip',
+      'x-upsert': 'true',
+    },
+    body,
+    signal: AbortSignal.timeout(30_000),
+  });
+  return res.ok;
+}
+
+/**
  * Back up now if today's copy is missing, then check again every hour, so a
  * server left running for weeks still gets exactly one backup per day.
  *
@@ -73,12 +113,13 @@ function prune(dir, keep) {
  * because a backup problem is not a reason to stop serving the live data.
  */
 export function scheduleBackups(db, options, log = console) {
-  const run = () => {
+  const run = async () => {
     try {
-      const { created, removed } = backupDatabase(db, options);
+      const { created, removed, uploaded } = await backupDatabase(db, options);
       if (created) {
-        const note = removed.length ? `, removed ${removed.length} older` : '';
-        log.log(`  backup: ${path.relative(process.cwd(), created)}${note}`);
+        const notes = [uploaded ? 'uploaded' : null, removed.length ? `removed ${removed.length} older` : null]
+          .filter(Boolean).join(', ');
+        log.log(`  backup: ${path.basename(created)}${notes ? ` (${notes})` : ''}`);
       }
     } catch (err) {
       log.error(`  backup FAILED, retrying in an hour: ${err.message}`);

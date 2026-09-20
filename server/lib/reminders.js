@@ -61,13 +61,13 @@ export function clockIn(timezone, now) {
  * @returns {Promise<{ sent: number, removed: number }>}
  */
 export async function runReminders({ now = new Date(), send = sendPush } = {}) {
-  const users = db.prepare(
+  const users = (await db.prepare(
     `SELECT DISTINCT u.id, u.timezone, u.locale
      FROM users u JOIN push_subscriptions s ON s.user_id = u.id
      WHERE u.reminders_on = 1`,
-  ).all();
+  ).all());
 
-  const claim = db.prepare('INSERT OR IGNORE INTO reminders_sent (routine_id, log_date) VALUES (?, ?)');
+  const claim = db.prepare('INSERT INTO reminders_sent (routine_id, log_date) VALUES (?, ?) ON CONFLICT DO NOTHING');
   const forget = db.prepare('DELETE FROM push_subscriptions WHERE id = ?');
   let sent = 0;
   let removed = 0;
@@ -75,10 +75,10 @@ export async function runReminders({ now = new Date(), send = sendPush } = {}) {
   for (const user of users) {
     const { date, minutes } = clockIn(user.timezone, now);
 
-    const due = db.prepare(
+    const due = (await db.prepare(
       `SELECT * FROM routines
        WHERE user_id = ? AND archived = 0 AND start_time IS NOT NULL AND reminder_min IS NOT NULL`,
-    ).all(user.id).filter((routine) => {
+    ).all(user.id)).filter((routine) => {
       if (!isDueOn(routine, date)) return false;
       const fireAt = toMinutes(routine.start_time) - routine.reminder_min;
       return fireAt >= 0 && fireAt <= minutes && minutes - fireAt < GRACE_MINUTES;
@@ -86,16 +86,16 @@ export async function runReminders({ now = new Date(), send = sendPush } = {}) {
     if (!due.length) continue;
 
     // Nothing to remind about once it is done or deliberately skipped.
-    const settled = new Set(db.prepare(
+    const settled = new Set((await db.prepare(
       "SELECT routine_id FROM logs WHERE user_id = ? AND log_date = ? AND status IN ('done', 'skipped')",
-    ).all(user.id, date).map((log) => log.routine_id));
+    ).all(user.id, date)).map((log) => log.routine_id));
 
-    let subscriptions = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(user.id);
+    let subscriptions = (await db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(user.id));
 
     for (const routine of due) {
       if (settled.has(routine.id)) continue;
       // Claim before sending: if the claim fails, another tick already has it.
-      if (!claim.run(routine.id, date).changes) continue;
+      if (!(await claim.run(routine.id, date)).changes) continue;
 
       const message = {
         title: `${routine.icon} ${routine.title}`,
@@ -110,7 +110,7 @@ export async function runReminders({ now = new Date(), send = sendPush } = {}) {
         try {
           const result = await send(subscription, message);
           if (result.gone) {
-            forget.run(subscription.id);
+            await forget.run(subscription.id);
             removed += 1;
             subscriptions = subscriptions.filter((s) => s.id !== subscription.id);
           } else if (result.ok) {
@@ -123,7 +123,7 @@ export async function runReminders({ now = new Date(), send = sendPush } = {}) {
     }
   }
 
-  db.prepare("DELETE FROM reminders_sent WHERE log_date < date('now', '-2 days')").run();
+  (await db.prepare("DELETE FROM reminders_sent WHERE log_date < to_char((now() AT TIME ZONE 'utc')::date - 2, 'YYYY-MM-DD')").run());
   return { sent, removed };
 }
 

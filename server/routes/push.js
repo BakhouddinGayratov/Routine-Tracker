@@ -39,20 +39,20 @@ pushRouter.get('/key', (_req, res) => {
 pushRouter.post('/subscribe', asyncHandler(async (req, res) => {
   const subscription = readSubscription(req.body);
 
-  db.prepare(
+  (await db.prepare(
     `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent)
      VALUES (@user_id, @endpoint, @p256dh, @auth, @user_agent)
      ON CONFLICT (endpoint) DO UPDATE SET
        user_id = excluded.user_id, p256dh = excluded.p256dh,
        auth = excluded.auth, user_agent = excluded.user_agent`,
-  ).run({ ...subscription, user_id: req.user.id, user_agent: String(req.get('user-agent') || '').slice(0, 300) });
+  ).run({ ...subscription, user_id: req.user.id, user_agent: String(req.get('user-agent') || '').slice(0, 300) }));
 
   // Over the cap, the oldest browsers go first.
-  db.prepare(
+  (await db.prepare(
     `DELETE FROM push_subscriptions WHERE user_id = ? AND id NOT IN (
        SELECT id FROM push_subscriptions WHERE user_id = ? ORDER BY id DESC LIMIT ?
      )`,
-  ).run(req.user.id, req.user.id, MAX_SUBSCRIPTIONS);
+  ).run(req.user.id, req.user.id, MAX_SUBSCRIPTIONS));
 
   res.status(201).json({ ok: true });
 }));
@@ -60,14 +60,14 @@ pushRouter.post('/subscribe', asyncHandler(async (req, res) => {
 pushRouter.delete('/subscribe', asyncHandler(async (req, res) => {
   const endpoint = String(req.body?.endpoint || '');
   if (!endpoint) throw ApiError.badRequest('Send the endpoint to remove');
-  const result = db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?')
-    .run(endpoint, req.user.id);
+  const result = (await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ? AND user_id = ?')
+    .run(endpoint, req.user.id));
   res.json({ ok: true, removed: result.changes });
 }));
 
 /** Send a test notification to every browser of this account. */
 pushRouter.post('/test', asyncHandler(async (req, res) => {
-  const subscriptions = db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(req.user.id);
+  const subscriptions = (await db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(req.user.id));
   if (!subscriptions.length) throw ApiError.badRequest('No browser is subscribed to notifications yet');
 
   const message = { title: 'Routine Tracker', body: pushText(req.user.locale, 'test'), tag: 'rt-test', url: '/settings' };
@@ -75,7 +75,7 @@ pushRouter.post('/test', asyncHandler(async (req, res) => {
   for (const subscription of subscriptions) {
     try {
       const result = await sendPush(subscription, message);
-      if (result.gone) db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(subscription.id);
+      if (result.gone) (await db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(subscription.id));
       else if (result.ok) sent += 1;
     } catch { /* reported through the count below */ }
   }

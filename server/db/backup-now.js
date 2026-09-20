@@ -9,7 +9,9 @@ import { db } from './index.js';
 import { config } from '../config.js';
 import { backupDatabase } from './backup.js';
 
-const { created, removed } = backupDatabase(db, config.backup);
-console.log(created ? `Backup written: ${created}` : `Today's backup already exists in ${config.backup.dir}`);
+const { created, removed, uploaded } = await backupDatabase(db, config.backup);
+console.log(created
+  ? `Backup written: ${created}${uploaded ? ' (uploaded)' : ''}`
+  : `Today's backup already exists in ${config.backup.dir}`);
 if (removed.length) console.log(`Removed ${removed.length} older backup(s): ${removed.join(', ')}`);
-db.close();
+await db.close();

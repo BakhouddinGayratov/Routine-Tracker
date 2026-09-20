@@ -106,12 +106,16 @@ app.get('*', (req, res, next) => {
 
 app.use(errorHandler);
 
-purgeExpiredSessions();
-setInterval(purgeExpiredSessions, 6 * 60 * 60 * 1000).unref();
+// Expired sessions are swept in the background; a failure there is not worth
+// taking the server down for.
+const sweepSessions = () => purgeExpiredSessions()
+  .catch((err) => console.error(`  session sweep: ${err.message}`));
+sweepSessions();
+setInterval(sweepSessions, 6 * 60 * 60 * 1000).unref();
 
 const server = app.listen(config.port, () => {
   console.log(`\n  Routine Tracker running at http://localhost:${config.port}`);
-  console.log(`  ${config.env} · sqlite via ${driverName}`);
+  console.log(`  ${config.env} · database: ${driverName}`);
   // Say so when an existing database was upgraded, so an unexpected schema
   // change is visible in the log rather than silent.
   for (const name of appliedMigrations) console.log(`  migrated: ${name}`);

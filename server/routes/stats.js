@@ -11,19 +11,19 @@ import { evaluate } from '../lib/achievements.js';
 
 export const statsRouter = express.Router();
 
-function loadWindow(user, days) {
+async function loadWindow(user, days) {
   const today = todayIn(user.timezone);
   const from = addDays(today, -(days - 1));
-  const routines = db.prepare('SELECT * FROM routines WHERE user_id = ?').all(user.id);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
-    .all(user.id, from, today);
+  const routines = (await db.prepare('SELECT * FROM routines WHERE user_id = ?').all(user.id));
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
+    .all(user.id, from, today));
   return { today, from, routines, logs };
 }
 
 /** Headline numbers for the dashboard. */
 statsRouter.get('/overview', asyncHandler(async (req, res) => {
   const days = Math.min(365, Math.max(7, Number(req.query.days) || 30));
-  const { today, from, routines, logs } = loadWindow(req.user, days);
+  const { today, from, routines, logs } = await loadWindow(req.user, days);
   const active = routines.filter((r) => !r.archived);
 
   const series = buildDailySeries(active, logs, from, today);
@@ -36,8 +36,8 @@ statsRouter.get('/overview', asyncHandler(async (req, res) => {
 
   // Compare the window with the one immediately before it.
   const prevFrom = addDays(from, -days);
-  const prevLogs = db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
-    .all(req.user.id, prevFrom, addDays(from, -1));
+  const prevLogs = (await db.prepare('SELECT * FROM logs WHERE user_id = ? AND log_date BETWEEN ? AND ?')
+    .all(req.user.id, prevFrom, addDays(from, -1)));
   const prevSeries = buildDailySeries(active, prevLogs, prevFrom, addDays(from, -1)).filter((d) => d.due > 0);
   const prevDue = prevSeries.reduce((s, d) => s + d.due, 0);
   const prevDone = prevSeries.reduce((s, d) => s + d.done, 0);
@@ -84,9 +84,9 @@ statsRouter.get('/overview', asyncHandler(async (req, res) => {
  */
 statsRouter.get('/summary', asyncHandler(async (req, res) => {
   const today = todayIn(req.user.timezone);
-  const routines = db.prepare('SELECT * FROM routines WHERE user_id = ?').all(req.user.id);
+  const routines = (await db.prepare('SELECT * FROM routines WHERE user_id = ?').all(req.user.id));
   const active = routines.filter((r) => !r.archived);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ?').all(req.user.id);
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ?').all(req.user.id));
 
   const firstDate = logs.reduce((min, l) => (min && min < l.log_date ? min : l.log_date), null) || today;
   const series = buildDailySeries(active, logs, firstDate, today);
@@ -112,7 +112,7 @@ statsRouter.get('/summary', asyncHandler(async (req, res) => {
 /** GitHub-style activity heatmap. */
 statsRouter.get('/heatmap', asyncHandler(async (req, res) => {
   const days = Math.min(371, Math.max(30, Number(req.query.days) || 364));
-  const { today, from, routines, logs } = loadWindow(req.user, days);
+  const { today, from, routines, logs } = await loadWindow(req.user, days);
   const active = routines.filter((r) => !r.archived);
 
   // Start at the first day anything was actually scheduled: a long empty run
@@ -129,7 +129,7 @@ statsRouter.get('/heatmap', asyncHandler(async (req, res) => {
 /** Per-routine leaderboard for the stats page. */
 statsRouter.get('/routines', asyncHandler(async (req, res) => {
   const days = Math.min(365, Math.max(7, Number(req.query.days) || 30));
-  const { today, from, routines, logs } = loadWindow(req.user, days);
+  const { today, from, routines, logs } = await loadWindow(req.user, days);
   const rows = routines
     .filter((r) => !r.archived)
     .map((r) => routineStats(r, logs, from, today, today))
@@ -145,8 +145,8 @@ statsRouter.get('/routines', asyncHandler(async (req, res) => {
  */
 statsRouter.get('/achievements', asyncHandler(async (req, res) => {
   const today = todayIn(req.user.timezone);
-  const routines = db.prepare('SELECT * FROM routines WHERE user_id = ?').all(req.user.id);
-  const logs = db.prepare('SELECT * FROM logs WHERE user_id = ?').all(req.user.id);
+  const routines = (await db.prepare('SELECT * FROM routines WHERE user_id = ?').all(req.user.id));
+  const logs = (await db.prepare('SELECT * FROM logs WHERE user_id = ?').all(req.user.id));
   const active = routines.filter((r) => !r.archived);
 
   const firstDate = logs.reduce((min, l) => (min && min < l.log_date ? min : l.log_date), null) || today;
@@ -165,18 +165,20 @@ statsRouter.get('/achievements', asyncHandler(async (req, res) => {
     categoryCount: new Set(active.map((r) => r.category)).size,
     earlyDone: doneLogs.filter((l) => (byId.get(l.routine_id)?.start_time || '99:99') < '08:00').length,
     lateDone: doneLogs.filter((l) => (byId.get(l.routine_id)?.start_time || '00:00') >= '21:00').length,
-    journalCount: db.prepare('SELECT COUNT(*) AS n FROM journal WHERE user_id = ?').get(req.user.id).n,
+    journalCount: (await db.prepare('SELECT COUNT(*) AS n FROM journal WHERE user_id = ?').get(req.user.id)).n,
     level: level.level,
   };
 
-  const unlockedRows = db.prepare('SELECT code, unlocked_at FROM achievements WHERE user_id = ?').all(req.user.id);
+  const unlockedRows = (await db.prepare('SELECT code, unlocked_at FROM achievements WHERE user_id = ?').all(req.user.id));
   const unlockedSet = new Set(unlockedRows.map((r) => r.code));
   const badges = evaluate(snapshot, unlockedSet);
 
   const fresh = badges.filter((b) => b.unlocked && !unlockedSet.has(b.code));
   if (fresh.length) {
-    const stmt = db.prepare('INSERT OR IGNORE INTO achievements (user_id, code) VALUES (?, ?)');
-    tx(() => fresh.forEach((b) => stmt.run(req.user.id, b.code)));
+    await tx(async (t) => {
+      const stmt = t.prepare('INSERT INTO achievements (user_id, code) VALUES (?, ?) ON CONFLICT DO NOTHING');
+      for (const badge of fresh) await stmt.run(req.user.id, badge.code);
+    });
   }
 
   const unlockedAt = new Map(unlockedRows.map((r) => [r.code, r.unlocked_at]));

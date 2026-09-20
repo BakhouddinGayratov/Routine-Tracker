@@ -48,6 +48,10 @@ export const config = {
   port: Number(process.env.PORT || 3000),
   dataDir: DATA_DIR,
   publicDir: path.join(ROOT, 'public'),
+  // PostgreSQL connection string (Supabase in production). Without it the
+  // server runs on PGlite — Postgres in-process — which is what the tests use.
+  databaseUrl: process.env.DATABASE_URL || '',
+  // Only used by scripts/import-sqlite.mjs, which reads the old SQLite file.
   databasePath: path.resolve(ROOT, process.env.DATABASE_PATH || './data/routine-tracker.sqlite'),
   // 'auto' prefers Node's built-in node:sqlite and falls back to better-sqlite3.
   databaseDriver: process.env.DATABASE_DRIVER || 'auto',

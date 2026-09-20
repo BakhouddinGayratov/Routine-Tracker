@@ -36,8 +36,8 @@ function decorate(routine) {
   return { ...routine, archived: !!routine.archived, repeat_label: describeRepeat(routine) };
 }
 
-function ownedRoutine(userId, id) {
-  const routine = db.prepare('SELECT * FROM routines WHERE id = ? AND user_id = ?').get(id, userId);
+async function ownedRoutine(userId, id) {
+  const routine = (await db.prepare('SELECT * FROM routines WHERE id = ? AND user_id = ?').get(id, userId));
   if (!routine) throw ApiError.notFound('Routine not found');
   return routine;
 }
@@ -46,9 +46,9 @@ function ownedRoutine(userId, id) {
  * A goal id arrives from the client, so it has to be proven to belong to this
  * account — the foreign key alone would happily point at someone else's goal.
  */
-function assertGoalOwned(userId, goalId) {
+async function assertGoalOwned(userId, goalId) {
   if (!goalId) return;
-  const goal = db.prepare('SELECT id FROM goals WHERE id = ? AND user_id = ?').get(goalId, userId);
+  const goal = (await db.prepare('SELECT id FROM goals WHERE id = ? AND user_id = ?').get(goalId, userId));
   if (!goal) throw ApiError.badRequest('That goal does not exist', { goal_id: 'Unknown goal' });
 }
 
@@ -82,23 +82,23 @@ function assertCoherent(data) {
  */
 routinesRouter.get('/', asyncHandler(async (req, res) => {
   const includeArchived = req.query.archived === 'all' || req.query.archived === '1';
-  const rows = db.prepare(
+  const rows = (await db.prepare(
     `SELECT * FROM routines
      WHERE user_id = ? ${includeArchived ? '' : 'AND archived = 0'}
      ORDER BY archived ASC, sort_order ASC, id ASC`,
-  ).all(req.user.id);
+  ).all(req.user.id));
 
   res.json({ routines: rows.map(decorate), categories: CATEGORIES });
 }));
 
 routinesRouter.get('/:id', asyncHandler(async (req, res) => {
-  const routine = ownedRoutine(req.user.id, req.params.id);
+  const routine = await ownedRoutine(req.user.id, req.params.id);
   const today = todayIn(req.user.timezone);
   const from = addDays(today, -89);
 
-  const logs = db.prepare(
+  const logs = (await db.prepare(
     'SELECT * FROM logs WHERE routine_id = ? AND log_date BETWEEN ? AND ? ORDER BY log_date',
-  ).all(routine.id, from, today);
+  ).all(routine.id, from, today));
 
   const history = dateRange(from, today)
     .filter((d) => isDueOn(routine, d))
@@ -118,12 +118,12 @@ routinesRouter.post('/', asyncHandler(async (req, res) => {
   const body = { start_date: todayIn(req.user.timezone), ...req.body };
   const data = validate(body, writeSchema);
   assertCoherent(data);
-  assertGoalOwned(req.user.id, data.goal_id);
+  await assertGoalOwned(req.user.id, data.goal_id);
 
-  const sort_order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?')
-    .get(req.user.id).next;
+  const sort_order = (await db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?')
+    .get(req.user.id)).next;
 
-  const info = db.prepare(
+  const info = (await db.prepare(
     `INSERT INTO routines (
        user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
        repeat_type, repeat_days, repeat_every, start_date, end_date,
@@ -132,27 +132,27 @@ routinesRouter.post('/', asyncHandler(async (req, res) => {
        @user_id, @goal_id, @title, @notes, @icon, @color, @category, @priority, @start_time, @duration_min,
        @repeat_type, @repeat_days, @repeat_every, @start_date, @end_date,
        @goal_type, @target_value, @unit, @reminder_min, @sort_order
-     )`,
-  ).run({ ...data, user_id: req.user.id, sort_order });
+     ) RETURNING id`,
+  ).run({ ...data, user_id: req.user.id, sort_order }));
 
-  const routine = db.prepare('SELECT * FROM routines WHERE id = ?').get(info.lastInsertRowid);
+  const routine = (await db.prepare('SELECT * FROM routines WHERE id = ?').get(info.lastInsertRowid));
   res.status(201).json({ routine: decorate(routine) });
 }));
 
 routinesRouter.patch('/:id', asyncHandler(async (req, res) => {
-  const existing = ownedRoutine(req.user.id, req.params.id);
+  const existing = await ownedRoutine(req.user.id, req.params.id);
   const data = validate(req.body, { ...writeSchema, archived: v.bool(), sort_order: v.int({ min: 0, max: 1e6 }) }, { partial: true });
   if (Object.keys(data).length === 0) throw ApiError.badRequest('Nothing to update');
   assertCoherent({ ...existing, ...data });
-  if ('goal_id' in data) assertGoalOwned(req.user.id, data.goal_id);
+  if ('goal_id' in data) await assertGoalOwned(req.user.id, data.goal_id);
 
   const sets = Object.keys(data).map((k) => `${k} = @${k}`).join(', ');
-  db.prepare(
-    `UPDATE routines SET ${sets}, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')
+  (await db.prepare(
+    `UPDATE routines SET ${sets}, updated_at = utc_now()
      WHERE id = @id AND user_id = @user_id`,
-  ).run({ ...data, id: existing.id, user_id: req.user.id });
+  ).run({ ...data, id: existing.id, user_id: req.user.id }));
 
-  res.json({ routine: decorate(db.prepare('SELECT * FROM routines WHERE id = ?').get(existing.id)) });
+  res.json({ routine: decorate((await db.prepare('SELECT * FROM routines WHERE id = ?').get(existing.id))) });
 }));
 
 /** Reorder in one request so drag-and-drop doesn't fire N calls. */
@@ -160,25 +160,27 @@ routinesRouter.post('/reorder', asyncHandler(async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Number.isInteger) : null;
   if (!ids?.length) throw ApiError.badRequest('Send an array of routine ids');
 
-  const stmt = db.prepare('UPDATE routines SET sort_order = ? WHERE id = ? AND user_id = ?');
-  tx(() => ids.forEach((id, i) => stmt.run(i + 1, id, req.user.id)));
+  await tx(async (t) => {
+    const update = t.prepare('UPDATE routines SET sort_order = ? WHERE id = ? AND user_id = ?');
+    for (const [index, id] of ids.entries()) await update.run(index + 1, id, req.user.id);
+  });
 
   res.json({ ok: true });
 }));
 
 routinesRouter.delete('/:id', asyncHandler(async (req, res) => {
-  const routine = ownedRoutine(req.user.id, req.params.id);
-  db.prepare('DELETE FROM routines WHERE id = ? AND user_id = ?').run(routine.id, req.user.id);
+  const routine = await ownedRoutine(req.user.id, req.params.id);
+  (await db.prepare('DELETE FROM routines WHERE id = ? AND user_id = ?').run(routine.id, req.user.id));
   res.json({ ok: true });
 }));
 
 /** Copy a routine, including its schedule — handy for near-identical habits. */
 routinesRouter.post('/:id/duplicate', asyncHandler(async (req, res) => {
-  const source = ownedRoutine(req.user.id, req.params.id);
-  const sort_order = db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?')
-    .get(req.user.id).next;
+  const source = await ownedRoutine(req.user.id, req.params.id);
+  const sort_order = (await db.prepare('SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?')
+    .get(req.user.id)).next;
 
-  const info = db.prepare(
+  const info = (await db.prepare(
     `INSERT INTO routines (
        user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
        repeat_type, repeat_days, repeat_every, start_date, end_date,
@@ -187,8 +189,9 @@ routinesRouter.post('/:id/duplicate', asyncHandler(async (req, res) => {
      SELECT user_id, goal_id, title || ' (copy)', notes, icon, color, category, priority, start_time, duration_min,
             repeat_type, repeat_days, repeat_every, start_date, end_date,
             goal_type, target_value, unit, reminder_min, ?
-     FROM routines WHERE id = ? AND user_id = ?`,
-  ).run(sort_order, source.id, req.user.id);
+     FROM routines WHERE id = ? AND user_id = ?
+     RETURNING id`,
+  ).run(sort_order, source.id, req.user.id));
 
-  res.status(201).json({ routine: decorate(db.prepare('SELECT * FROM routines WHERE id = ?').get(info.lastInsertRowid)) });
+  res.status(201).json({ routine: decorate((await db.prepare('SELECT * FROM routines WHERE id = ?').get(info.lastInsertRowid))) });
 }));
