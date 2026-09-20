@@ -1,0 +1,48 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# One free web service. The database is Supabase (Postgres), because Render's
+# free disk is wiped on every deploy and a SQLite file would go with it.
+#
+# Values marked `sync: false` are set once in the Render dashboard, so no
+# secret is ever committed here. DEPLOY.md walks through it.
+services:
+  - type: web
+    name: routine-tracker
+    runtime: node
+    plan: free
+    region: frankfurt          # closest of Render's free regions to Uzbekistan
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22.13.0
+      - key: NODE_ENV
+        value: production
+      # Supabase connection string (the pooler one, port 6543).
+      - key: DATABASE_URL
+        sync: false
+      # Signs session tokens. Render generates it once; changing it signs
+      # everyone out, so leave it alone afterwards.
+      - key: JWT_SECRET
+        generateValue: true
+      # Web Push identity. Without these the keys would be regenerated on
+      # every deploy and every reminder subscription would go dead.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      # Daily backups are uploaded here, because the local disk does not last.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: BACKUP_BUCKET
+        value: backups
+      # The iOS app's origin is allowed by default; add your own if you serve
+      # the client from somewhere else.
+      - key: CORS_ORIGINS
+        sync: false

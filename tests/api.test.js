@@ -612,6 +612,80 @@ await test('deleting an account removes all of its data', async () => {
   assert.equal(relogin.status, 401);
 });
 
+// --- SQLite import -------------------------------------------------------
+
+const { readSqlite, importRows } = await import('../scripts/import-sqlite.mjs');
+const legacyFile = path.join(here, '..', 'data', `legacy-${Date.now()}.sqlite`);
+
+await test('an existing SQLite database is imported with its ids intact', async () => {
+  // A miniature of the old database: a user, a goal, a routine pointing at
+  // that goal, and a log — enough that every foreign key has to survive.
+  const { DatabaseSync } = await import('node:sqlite');
+  const legacy = new DatabaseSync(legacyFile);
+  legacy.exec(`
+    CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT, name TEXT, password_hash TEXT,
+      avatar_color TEXT, timezone TEXT, locale TEXT, theme TEXT, week_start INTEGER,
+      daily_goal INTEGER, reminders_on INTEGER, created_at TEXT, updated_at TEXT);
+    CREATE TABLE goals (id INTEGER PRIMARY KEY, user_id INTEGER, title TEXT, description TEXT,
+      icon TEXT, color TEXT, target_date TEXT, status TEXT, sort_order INTEGER,
+      created_at TEXT, updated_at TEXT);
+    CREATE TABLE routines (id INTEGER PRIMARY KEY, user_id INTEGER, goal_id INTEGER, title TEXT,
+      notes TEXT, icon TEXT, color TEXT, category TEXT, priority TEXT, start_time TEXT,
+      duration_min INTEGER, repeat_type TEXT, repeat_days TEXT, repeat_every INTEGER,
+      start_date TEXT, end_date TEXT, goal_type TEXT, target_value REAL, unit TEXT,
+      reminder_min INTEGER, sort_order INTEGER, archived INTEGER, created_at TEXT, updated_at TEXT);
+    CREATE TABLE logs (id INTEGER PRIMARY KEY, routine_id INTEGER, user_id INTEGER, log_date TEXT,
+      status TEXT, value REAL, note TEXT, completed_at TEXT);
+    INSERT INTO users VALUES (9001, 'legacy@example.com', 'Legacy', 'hash', '#6366f1', 'UTC',
+      'uz', 'dark', 1, 80, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+    INSERT INTO goals VALUES (9002, 9001, 'Old goal', '', '🎯', '#6366f1', NULL, 'active', 1,
+      '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+    INSERT INTO routines VALUES (9003, 9001, 9002, 'Old routine', '', '✅', '#6366f1', 'personal',
+      'normal', '07:00', 30, 'daily', '', 1, '2026-01-01', NULL, 'check', 1, '', NULL, 1, 0,
+      '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+    INSERT INTO logs VALUES (9004, 9003, 9001, '2026-01-02', 'done', 1, '', '2026-01-02T07:30:00Z');
+  `);
+
+  const rows = readSqlite(legacy);
+  legacy.close();
+  assert.equal(rows.users.length, 1);
+  assert.equal(rows.logs.length, 1);
+
+  const written = await importRows(db, rows);
+  assert.equal(written, 4);
+
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').get(9001);
+  assert.equal(user.email, 'legacy@example.com');
+  assert.equal(user.locale, 'uz');
+
+  const routine = await db.prepare('SELECT * FROM routines WHERE id = ?').get(9003);
+  assert.equal(routine.goal_id, 9002, 'the link to the goal survives');
+  assert.equal(routine.user_id, 9001);
+
+  const log = await db.prepare('SELECT * FROM logs WHERE id = ?').get(9004);
+  assert.equal(log.log_date, '2026-01-02');
+});
+
+await test('the next new row gets an id past the imported ones', async () => {
+  // Without resetting the identity sequences, Postgres would hand out id 1
+  // again and the insert would collide with an imported row.
+  const created = await db.prepare(
+    `INSERT INTO users (email, name, password_hash) VALUES (?, 'After import', 'x') RETURNING id`,
+  ).run(`after-import-${Date.now()}@example.com`);
+  assert.ok(created.lastInsertRowid > 9001, `expected an id above 9001, got ${created.lastInsertRowid}`);
+});
+
+await test('importing the same database twice does not duplicate it', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const legacy = new DatabaseSync(legacyFile, { readOnly: true });
+  const rows = readSqlite(legacy);
+  legacy.close();
+
+  await importRows(db, rows);
+  const count = (await db.prepare('SELECT COUNT(*) AS n FROM users WHERE id = ?').get(9001)).n;
+  assert.equal(count, 1);
+});
+
 // --- Database settings and backups ---------------------------------------
 
 const { backupDatabase, snapshot, TABLES } = await import('../server/db/backup.js');
@@ -674,5 +748,6 @@ console.log(`\n  ${passed} passed, ${failed} failed\n`);
 
 await db.close();
 fs.rmSync(backupDir, { recursive: true, force: true });
+fs.rmSync(legacyFile, { force: true });
 
 process.exit(failed ? 1 : 0);

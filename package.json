@@ -14,7 +14,10 @@
     "test": "node tests/api.test.js",
     "test:ui": "node tests/ui.test.js",
     "seed": "node server/db/seed.js",
-    "backup": "node server/db/backup-now.js"
+    "backup": "node server/db/backup-now.js",
+    "restore": "node scripts/restore-backup.mjs",
+    "import:sqlite": "node scripts/import-sqlite.mjs",
+    "vapid": "node scripts/vapid.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
