@@ -99,6 +99,52 @@ export function renderToday(container, { date, navigate }) {
     }
   };
 
+  /**
+   * Move one occurrence to the next day. A repeating routine keeps its rule,
+   * so it is asked about first — the day being left gets marked skipped, and
+   * that is not something to do behind the user's back.
+   */
+  const postpone = async (item) => {
+    if (item.repeat_type !== 'once') {
+      const ok = await confirmDialog({
+        title: t('routines.postponeConfirm', { title: item.title }),
+        message: t('routines.postponeRepeat'),
+        confirmLabel: t('action.postpone'),
+      });
+      if (!ok) return;
+    }
+
+    try {
+      const result = await api.postponeRoutine(item.id, selected);
+      toast(t('toast.postponed', { date: formatDate(result.date, { locale: state.user.locale }) }));
+      invalidateRoutines();
+      await load();
+      refreshSummary();
+    } catch (err) {
+      toast(err.message || t('error.generic'), 'error');
+    }
+  };
+
+  const removeRoutine = async (item) => {
+    const ok = await confirmDialog({
+      title: t('routines.deleteConfirm', { title: item.title }),
+      message: t('routines.deleteWarn'),
+      confirmLabel: t('action.delete'),
+      danger: true,
+    });
+    if (!ok) return;
+
+    try {
+      await api.deleteRoutine(item.id);
+      toast(t('toast.routineDeleted'));
+      invalidateRoutines();
+      await load();
+      refreshSummary();
+    } catch (err) {
+      toast(err.message || t('error.generic'), 'error');
+    }
+  };
+
   const updateSummary = () => {
     const done = data.items.filter((i) => i.status === 'done').length;
     const skipped = data.items.filter((i) => i.status === 'skipped').length;
@@ -552,6 +598,10 @@ export function renderToday(container, { date, navigate }) {
           class: 'btn btn--icon', 'data-tip': t('action.skip'),
           onclick: () => setStatus(item, isSkipped ? 'pending' : 'skipped'),
         }, icon('skip', { size: 15 })) : null,
+        !isDone ? el('button', {
+          class: 'btn btn--icon', 'data-tip': t('action.postpone'),
+          onclick: () => postpone(item),
+        }, icon('tomorrow', { size: 15 })) : null,
         el('button', {
           class: 'btn btn--icon', 'data-tip': t('action.edit'),
           onclick: () => openRoutineForm(item, {
@@ -559,6 +609,10 @@ export function renderToday(container, { date, navigate }) {
             onSaved: () => { invalidateRoutines(); load(); },
           }),
         }, icon('edit', { size: 15 })),
+        el('button', {
+          class: 'btn btn--icon btn--danger-ghost', 'data-tip': t('action.delete'),
+          onclick: () => removeRoutine(item),
+        }, icon('trash', { size: 15 })),
       ),
     );
   };

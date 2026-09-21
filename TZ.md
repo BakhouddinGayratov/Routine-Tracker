@@ -222,7 +222,7 @@ Barcha manzillar `/api` ostida. `/health`, ro‘yxatdan o‘tish va kirishdan bo
 | Bo‘lim | Manzillar |
 |---|---|
 | Hisob | `POST /auth/register`, `/auth/login`, `/auth/logout`, `/auth/password`; `GET`·`PATCH`·`DELETE /auth/me`; `GET /auth/sessions`, `DELETE /auth/sessions/:id` |
-| Rejimlar | `GET`·`POST /routines`; `GET`·`PATCH`·`DELETE /routines/:id`; `POST /routines/:id/duplicate`, `/routines/reorder` |
+| Rejimlar | `GET`·`POST /routines`; `GET`·`PATCH`·`DELETE /routines/:id`; `POST /routines/:id/duplicate`, `/routines/:id/postpone`, `/routines/reorder` |
 | Maqsadlar | `GET`·`POST /goals`; `PATCH`·`DELETE /goals/:id` |
 | Kunlar | `GET /days/:date`, `/days/:date/week`, `/days/month/:y/:m`; `POST /days/log`, `/days/:date/complete-all`, `/days/:date/copy-from`; `GET /days/upcoming/list` |
 | Statistika | `GET /stats/summary`, `/stats/overview`, `/stats/heatmap`, `/stats/routines`, `/stats/achievements` |

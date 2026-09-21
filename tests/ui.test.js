@@ -11,7 +11,6 @@
  *
  * Skips cleanly (exit 0) when Playwright is not installed.
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -30,25 +29,24 @@ try {
 
 const PORT = Number(process.env.UI_TEST_PORT || 4400);
 const BASE = `http://localhost:${PORT}`;
-const dbFile = path.join(root, 'data', `ui-test-${Date.now()}.sqlite`);
-
 const server = spawn(process.execPath, [path.join(root, 'server', 'index.js')], {
   cwd: root,
   env: {
     ...process.env,
     NODE_ENV: 'test',
     PORT: String(PORT),
-    DATABASE_PATH: dbFile,
+    // An empty value, not a missing one: config.js fills in anything
+    // *undefined* from .env, so deleting this would hand the test server the
+    // developer's real database. Empty means PGlite, in memory, thrown away
+    // when the process exits.
+    DATABASE_URL: '',
     JWT_SECRET: 'ui-test-secret-not-used-in-production',
   },
   stdio: ['ignore', 'ignore', 'inherit'],
 });
 
 const cleanup = () => {
-  server.kill();
-  for (const file of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) {
-    if (fs.existsSync(file)) { try { fs.unlinkSync(file); } catch { /* ignore */ } }
-  }
+  server.kill();   // the in-memory database goes with it
 };
 process.on('exit', cleanup);
 

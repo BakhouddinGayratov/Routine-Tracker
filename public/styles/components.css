@@ -57,6 +57,8 @@
   color: var(--fg-muted);
 }
 .btn--icon:hover { background: var(--surface-hover); color: var(--fg); }
+.btn--icon.btn--danger-ghost:hover,
+.btn--icon.btn--danger-ghost:focus-visible { background: var(--danger-soft); color: var(--danger); }
 
 /* Inline spinner for in-flight actions. */
 .btn[aria-busy='true']::after {
@@ -470,8 +472,12 @@
 .routine__actions { flex: none; }
 
 /* On a phone the row has ~340px for a check, time, icon, title, stepper and
-   two actions. The title gives way (one line, ellipsis) and the stepper drops
-   to a line of its own, lined up under the title, so nothing leaves the row. */
+   four actions. The title gives way (one line, ellipsis), and the stepper and
+   the action strip each drop to a line of their own, right-aligned under the
+   title. Inline, four icons left the title about a hundred pixels and it read
+   as "Wa…"; the title is the row, so it keeps the width and the actions —
+   always visible on touch, since there is no hover to reveal them — take the
+   space below, where they also get a proper tap target. */
 @media (max-width: 640px) {
   .routine { flex-wrap: wrap; gap: var(--s-2) var(--s-3); padding: var(--s-3); }
   .routine__icon { width: 32px; height: 32px; font-size: 16px; border-radius: var(--r-sm); }
@@ -480,7 +486,8 @@
   .routine__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .routine__meta { gap: 2px var(--s-2); }
   .routine .qty { order: 10; flex-basis: 100%; justify-content: flex-end; }
-  .routine__actions .btn--icon { width: 32px; height: 32px; }
+  .routine__actions { order: 11; flex: 1 0 100%; justify-content: flex-end; gap: var(--s-2); }
+  .routine__actions:empty { display: none; }
 }
 
 /* Quantity stepper on a measurable routine */

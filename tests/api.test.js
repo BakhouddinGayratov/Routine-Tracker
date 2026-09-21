@@ -15,9 +15,14 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 process.env.NODE_ENV = 'test';
-// No DATABASE_URL: db/driver.js then runs PGlite, an in-memory PostgreSQL, so
-// the tests exercise the same SQL the deployed database will run.
-delete process.env.DATABASE_URL;
+// PGlite (in-memory PostgreSQL) unless a test database is named explicitly.
+//
+// It is set to an empty string rather than deleted: config.js reads .env for
+// any variable that is *undefined*, so deleting this one let a developer's
+// real DATABASE_URL back in — and the suite, which creates and deletes
+// accounts, then ran against the live database. An empty value is defined,
+// so .env cannot override it.
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || '';
 process.env.PORT = '4310';
 process.env.JWT_SECRET = 'test-secret-not-used-in-production';
 
@@ -56,6 +61,8 @@ async function api(method, url, body, opts = {}) {
 }
 
 const today = new Date().toISOString().slice(0, 10);
+const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+const dayAfter = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
 const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 const email = `test${Date.now()}@example.com`;
 let routineId = null;
@@ -200,6 +207,103 @@ await test('a routine can be duplicated', async () => {
   assert.equal(r.status, 201);
   assert.match(r.body.routine.title, /copy/);
   await api('DELETE', `/api/routines/${r.body.routine.id}`);
+});
+
+await test('postponing a one-off routine moves its date', async () => {
+  const created = await api('POST', '/api/routines', {
+    title: 'Call the bank', start_date: today, repeat_type: 'once',
+  });
+  const id = created.body.routine.id;
+
+  const r = await api('POST', `/api/routines/${id}/postpone`, { date: today });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.moved, 'shifted');
+  assert.equal(r.body.date, tomorrow);
+  assert.equal(r.body.routine.start_date, tomorrow);
+
+  const gone = await api('GET', `/api/days/${today}`);
+  assert.equal(gone.body.items.some((i) => i.id === id), false, 'it should have left today');
+  const arrived = await api('GET', `/api/days/${tomorrow}`);
+  assert.equal(arrived.body.items.some((i) => i.id === id), true);
+
+  // Postponing again keeps moving the same routine rather than piling up copies.
+  const again = await api('POST', `/api/routines/${id}/postpone`, { date: tomorrow });
+  assert.equal(again.body.routine.start_date, dayAfter);
+  const all = await api('GET', '/api/routines');
+  assert.equal(all.body.routines.filter((x) => x.title === 'Call the bank').length, 1);
+
+  await api('DELETE', `/api/routines/${id}`);
+});
+
+await test('postponing a daily routine only skips the day', async () => {
+  const created = await api('POST', '/api/routines', { title: 'Stretch', start_date: today });
+  const id = created.body.routine.id;
+
+  const r = await api('POST', `/api/routines/${id}/postpone`, { date: today });
+  assert.equal(r.body.moved, 'skipped', 'a daily routine already lands on tomorrow');
+  assert.equal(r.body.routine.id, id, 'no copy is created');
+
+  const day = await api('GET', `/api/days/${today}`);
+  assert.equal(day.body.items.find((i) => i.id === id).status, 'skipped');
+  const next = await api('GET', `/api/days/${tomorrow}`);
+  assert.equal(next.body.items.find((i) => i.id === id).status, 'pending');
+
+  await api('DELETE', `/api/routines/${id}`);
+});
+
+await test('postponing a weekly routine puts a one-off copy on tomorrow', async () => {
+  const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
+  const created = await api('POST', '/api/routines', {
+    title: 'Deep clean', start_date: today, repeat_type: 'weekly', repeat_days: String(weekday),
+  });
+  const id = created.body.routine.id;
+
+  const r = await api('POST', `/api/routines/${id}/postpone`, { date: today });
+  assert.equal(r.body.moved, 'copied');
+  assert.notEqual(r.body.routine.id, id);
+  assert.equal(r.body.routine.repeat_type, 'once');
+  assert.equal(r.body.routine.start_date, tomorrow);
+  assert.equal(r.body.routine.title, 'Deep clean', 'the copy is the same work, so it keeps the name');
+
+  const day = await api('GET', `/api/days/${today}`);
+  assert.equal(day.body.items.find((i) => i.id === id).status, 'skipped');
+  const next = await api('GET', `/api/days/${tomorrow}`);
+  assert.equal(next.body.items.some((i) => i.id === r.body.routine.id), true);
+
+  await api('DELETE', `/api/routines/${r.body.routine.id}`);
+  await api('DELETE', `/api/routines/${id}`);
+});
+
+await test('a day the routine is not scheduled for cannot be postponed', async () => {
+  const created = await api('POST', '/api/routines', {
+    title: 'One day only', start_date: today, repeat_type: 'once',
+  });
+  const r = await api('POST', `/api/routines/${created.body.routine.id}/postpone`, { date: tomorrow });
+  assert.equal(r.status, 400);
+  await api('DELETE', `/api/routines/${created.body.routine.id}`);
+});
+
+await test("another user cannot postpone someone else's routine", async () => {
+  const other = await api('POST', '/api/auth/register', { name: 'Other', email: `nosy${Date.now()}@example.com`, password: 'goodpass123' }, { noAuth: true });
+  const res = await fetch(`${base}/api/routines/${routineId}/postpone`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${other.body.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ date: today }),
+  });
+  assert.equal(res.status, 404);
+});
+
+await test('deleting a routine removes it from the day view and its history', async () => {
+  const created = await api('POST', '/api/routines', { title: 'Temporary', start_date: today });
+  const id = created.body.routine.id;
+  await api('POST', '/api/days/log', { routine_id: id, date: today, status: 'done' });
+
+  const r = await api('DELETE', `/api/routines/${id}`);
+  assert.equal(r.status, 200);
+
+  const day = await api('GET', `/api/days/${today}`);
+  assert.equal(day.body.items.some((i) => i.id === id), false);
+  assert.equal((await api('GET', `/api/routines/${id}`)).status, 404);
 });
 
 await test("another user's routine is not reachable", async () => {
@@ -700,6 +804,21 @@ await test('the database is PostgreSQL and enforces its foreign keys', async () 
     db.prepare("INSERT INTO routines (user_id, title, start_date) VALUES (?, 'orphan', '2026-01-01')").run(999999),
     /foreign key|violates/i,
   );
+});
+
+await test('an @ inside a string literal is not read as a parameter', async () => {
+  // LIKE '%@example.com' used to be rewritten to a $1 placeholder, and the
+  // query failed with "bind message supplies 0 parameters".
+  const rows = await db.prepare("SELECT COUNT(*) AS n FROM users WHERE email LIKE '%@example.com'").all();
+  assert.equal(typeof rows[0].n, 'number');
+
+  const one = await db.prepare("SELECT 'a@b.com' AS mail, ? AS given").get('x');
+  assert.equal(one.mail, 'a@b.com');
+  assert.equal(one.given, 'x');
+
+  // The escaped-quote case: '' inside a literal must not end it early.
+  const quoted = await db.prepare("SELECT 'it''s @fine' AS text").get();
+  assert.equal(quoted.text, "it's @fine");
 });
 
 await test('every table the backup names exists', async () => {

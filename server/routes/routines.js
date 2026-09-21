@@ -174,6 +174,73 @@ routinesRouter.delete('/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+/**
+ * Move one day's occurrence to the next day.
+ *
+ * What "postpone" means depends on the routine. A one-off has nothing to
+ * recur, so the routine itself changes date. A repeating one must keep its
+ * rule — the day being left is marked skipped, and the occurrence reappears
+ * tomorrow: for a daily routine the rule already lands there, so nothing is
+ * created; for a weekly, monthly or every-N-days routine it would not, so a
+ * single-day copy is placed on tomorrow instead.
+ */
+routinesRouter.post('/:id/postpone', asyncHandler(async (req, res) => {
+  const routine = await ownedRoutine(req.user.id, req.params.id);
+  const { date: from } = validate(
+    { date: req.body?.date ?? todayIn(req.user.timezone) },
+    { date: v.date() },
+  );
+  if (!isDueOn(routine, from)) throw ApiError.badRequest('That routine is not scheduled on that day');
+
+  const to = addDays(from, 1);
+
+  const result = await tx(async (t) => {
+    if (routine.repeat_type === 'once') {
+      // An end date still sitting on the old day would hide the routine the
+      // moment it moves past it, so it travels with the start date.
+      const end_date = routine.end_date && routine.end_date < to ? to : routine.end_date;
+      await t.prepare(
+        'UPDATE routines SET start_date = ?, end_date = ?, updated_at = utc_now() WHERE id = ? AND user_id = ?',
+      ).run(to, end_date, routine.id, req.user.id);
+      // A log on the old day describes an occurrence that no longer exists.
+      await t.prepare('DELETE FROM logs WHERE routine_id = ? AND log_date = ?').run(routine.id, from);
+      return { moved: 'shifted', id: routine.id };
+    }
+
+    await t.prepare(
+      `INSERT INTO logs (routine_id, user_id, log_date, status, value, note)
+       VALUES (@routine_id, @user_id, @log_date, 'skipped', 0, '')
+       ON CONFLICT (routine_id, log_date)
+       DO UPDATE SET status = 'skipped', value = 0, completed_at = utc_now()`,
+    ).run({ routine_id: routine.id, user_id: req.user.id, log_date: from });
+
+    if (isDueOn(routine, to)) return { moved: 'skipped', id: routine.id };
+
+    const { next: sort_order } = await t.prepare(
+      'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?',
+    ).get(req.user.id);
+
+    // The copy keeps the title: it is the same piece of work, just later.
+    const info = await t.prepare(
+      `INSERT INTO routines (
+         user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
+         repeat_type, repeat_days, repeat_every, start_date, end_date,
+         goal_type, target_value, unit, reminder_min, sort_order
+       )
+       SELECT user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
+              'once', '', 1, ?, NULL,
+              goal_type, target_value, unit, reminder_min, ?
+       FROM routines WHERE id = ? AND user_id = ?
+       RETURNING id`,
+    ).run(to, sort_order, routine.id, req.user.id);
+
+    return { moved: 'copied', id: info.lastInsertRowid };
+  });
+
+  const moved = await db.prepare('SELECT * FROM routines WHERE id = ?').get(result.id);
+  res.json({ ok: true, moved: result.moved, date: to, routine: decorate(moved) });
+}));
+
 /** Copy a routine, including its schedule — handy for near-identical habits. */
 routinesRouter.post('/:id/duplicate', asyncHandler(async (req, res) => {
   const source = await ownedRoutine(req.user.id, req.params.id);

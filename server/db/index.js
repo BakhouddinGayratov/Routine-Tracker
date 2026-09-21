@@ -49,21 +49,52 @@ function statements(runner) {
  * `@name` takes a single object argument (repeating a name reuses the same
  * $n), `?` takes positional arguments. A statement that already uses $n is
  * passed through untouched.
+ *
+ * Only text outside string literals is rewritten. A query comparing against
+ * an address — LIKE '%@example.com' — otherwise had its "@example" read as a
+ * parameter and failed with "bind message supplies N parameters, but the
+ * prepared statement requires 0".
  */
 function compile(sql) {
   if (/\$\d/.test(sql)) return { text: sql, values: (args) => args };
 
   const names = [];
-  const named = sql.replace(/@([a-z_][a-z0-9_]*)/gi, (_, name) => {
-    const existing = names.indexOf(name);
-    if (existing !== -1) return `$${existing + 1}`;
-    names.push(name);
-    return `$${names.length}`;
-  });
+  let positional = 0;
+  let text = '';
+  let quote = null;
+
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i];
+
+    if (quote) {
+      text += char;
+      // '' inside a literal is an escaped quote, not the end of it.
+      if (char === quote && !(char === "'" && sql[i + 1] === "'")) quote = null;
+      else if (char === quote) { text += sql[i + 1]; i += 1; }
+      continue;
+    }
+
+    if (char === "'" || char === '"') { quote = char; text += char; continue; }
+
+    if (char === '@') {
+      const name = /^[a-z_][a-z0-9_]*/i.exec(sql.slice(i + 1))?.[0];
+      if (name) {
+        const existing = names.indexOf(name);
+        if (existing === -1) names.push(name);
+        text += `$${existing === -1 ? names.length : existing + 1}`;
+        i += name.length;
+        continue;
+      }
+    }
+
+    if (char === '?') { positional += 1; text += `$${positional}`; continue; }
+
+    text += char;
+  }
 
   if (names.length) {
     return {
-      text: named,
+      text,
       values: (args) => {
         const source = args[0] || {};
         return names.map((name) => normalise(source[name]));
@@ -71,9 +102,7 @@ function compile(sql) {
     };
   }
 
-  let index = 0;
-  const positional = sql.replace(/\?/g, () => `$${(index += 1)}`);
-  return { text: positional, values: (args) => args.map(normalise) };
+  return { text, values: (args) => args.map(normalise) };
 }
 
 /**

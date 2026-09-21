@@ -35,6 +35,8 @@ const PATHS = {
   target: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
   bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0',
   skip: 'M5 4l10 8-10 8V4zM19 5v14',
+  // "postpone": a calendar with an arrow leaving it to the right.
+  tomorrow: 'M8 2v4M16 2v4M3 10h11M5 4h14a2 2 0 0 1 2 2v5M3 10v10a2 2 0 0 0 2 2h7M16 19h6M19 16l3 3-3 3',
   alert: 'M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z',
   info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16v-4M12 8h.01',
   filter: 'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
