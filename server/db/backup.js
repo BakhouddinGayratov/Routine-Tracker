@@ -83,6 +83,18 @@ function prune(dir, keep) {
 }
 
 /**
+ * Supabase has two kinds of server key. The legacy service_role key is a JWT
+ * and goes in the Authorization header as well as apikey. The newer secret
+ * key (sb_secret_…) is not a JWT: the gateway reads it from apikey and
+ * rejects it as a bearer token, so the old header alone failed every upload.
+ */
+export function storageAuth(key) {
+  return key.startsWith('sb_')
+    ? { apikey: key }
+    : { apikey: key, Authorization: `Bearer ${key}` };
+}
+
+/**
  * Send a snapshot to Supabase Storage. Returns false when storage is not
  * configured, which is the normal case on a machine that keeps its own disk.
  */
@@ -95,7 +107,7 @@ async function uploadToStorage(name, body) {
   const res = await fetch(`${url.replace(/\/$/, '')}/storage/v1/object/${bucket}/${name}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${key}`,
+      ...storageAuth(key),
       'Content-Type': 'application/gzip',
       'x-upsert': 'true',
     },
