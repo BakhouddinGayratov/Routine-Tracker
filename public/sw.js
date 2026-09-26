@@ -14,7 +14,7 @@
  * for the capacitor:// scheme.
  */
 
-const CACHE = 'rt-shell-v1';
+const CACHE = 'rt-shell-v2';   // bump when a fix must reach installed apps promptly
 const SHELL = '/index.html';
 const STATIC = /^\/(app|styles|assets)\/|^\/manifest\.webmanifest$/;
 

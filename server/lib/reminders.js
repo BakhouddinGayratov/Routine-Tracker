@@ -116,8 +116,11 @@ export async function runReminders({ now = new Date(), send = sendPush } = {}) {
           } else if (result.ok) {
             sent += 1;
           }
-        } catch {
-          // Network trouble with one push service must not stop the others.
+        } catch (err) {
+          // Network trouble with one push service must not stop the others,
+          // but it must be visible: a silent failure here is a reminder the
+          // user simply never gets.
+          console.warn(`push error: subscription ${subscription.id} (user ${user.id}): ${err.message}`);
         }
       }
     }

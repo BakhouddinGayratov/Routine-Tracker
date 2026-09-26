@@ -20,33 +20,64 @@ export function renderSettings(container, { navigate }) {
   // Whether reminders reach this browser with the site closed (server push),
   // only while it is open, or not at all — plus a way to prove it works.
   const pushStatus = el('div', { class: 'push-status' });
+
+  // Reminders default to on for a new account, so the switch above is usually
+  // already on and never changes — it cannot be the only way to subscribe a
+  // device. When this device has no subscription, the status line carries its
+  // own button, and that click is where the permission prompt happens.
+  const turnOnPush = async (event) => {
+    const button = event.currentTarget;
+    button.setAttribute('aria-busy', 'true');
+    try {
+      const ok = await enablePush({ ask: true });
+      if (!ok) toast(t('settings.remindersBlocked'), 'error');
+    } catch (err) {
+      toast(t('settings.pushFailed', { reason: err.message || t('error.generic') }), 'error');
+    } finally {
+      button.removeAttribute('aria-busy');
+      paintPushStatus();
+    }
+  };
+
+  const sendTest = async (event) => {
+    const button = event.currentTarget;
+    button.setAttribute('aria-busy', 'true');
+    try {
+      const result = await api.pushTest();
+      if (result.ok) {
+        toast(t('settings.pushTestSent'), 'success');
+      } else {
+        // The push service's own answer ("403 BadJwtToken") beats "something went wrong".
+        const failed = result.results?.find((r) => !r.ok);
+        const reason = failed ? `${failed.status || '—'} ${failed.reason || ''}`.trim() : t('error.generic');
+        toast(t('settings.pushTestFailed', { reason }), 'error');
+      }
+    } catch (err) {
+      toast(err.message || t('error.generic'), 'error');
+    } finally {
+      button.removeAttribute('aria-busy');
+      paintPushStatus();
+    }
+  };
+
   const paintPushStatus = async () => {
     const stateNow = await pushState().catch(() => 'unsupported');
-    const on = state.user?.reminders_on;
-    const key = !on ? null
-      : stateNow === 'on' ? 'settings.pushOn'
-        : stateNow === 'unsupported' ? 'settings.pushUnsupported'
-          : stateNow === 'denied' ? null : 'settings.pushOff';
-    if (!key) { mount(pushStatus); return; }
+    if (!state.user?.reminders_on || stateNow === 'denied') { mount(pushStatus); return; }
+
+    const text = {
+      on: 'settings.pushOn',
+      off: 'settings.pushOff',
+      unsupported: 'settings.pushUnsupported',
+      'needs-install': 'settings.pushInstall',
+    }[stateNow];
+
     mount(pushStatus,
-      el('span', { class: ['push-status__text', stateNow === 'on' && 'is-on'] }, t(key)),
+      el('span', { class: ['push-status__text', stateNow === 'on' && 'is-on'] }, t(text)),
       stateNow === 'on'
-        ? el('button', {
-            class: 'btn btn--ghost btn--sm', type: 'button',
-            onclick: async (event) => {
-              const button = event.currentTarget;
-              button.setAttribute('aria-busy', 'true');
-              try {
-                const result = await api.pushTest();
-                toast(result.ok ? t('settings.pushTestSent') : t('error.generic'), result.ok ? 'success' : 'error');
-              } catch (err) {
-                toast(err.message || t('error.generic'), 'error');
-              } finally {
-                button.removeAttribute('aria-busy');
-              }
-            },
-          }, t('settings.pushTest'))
-        : null,
+        ? el('button', { class: 'btn btn--ghost btn--sm', type: 'button', onclick: sendTest }, t('settings.pushTest'))
+        : stateNow === 'off'
+          ? el('button', { class: 'btn btn--primary btn--sm', type: 'button', onclick: turnOnPush }, t('settings.pushEnable'))
+          : null,
     );
   };
 
@@ -242,14 +273,17 @@ export function renderSettings(container, { navigate }) {
                     toast(t('settings.remindersBlocked'), 'error');
                     return;
                   }
+                  // Subscribe before anything else is awaited: on iPhone the
+                  // tap stops counting as the user's after a network request.
+                  try {
+                    await enablePush();
+                  } catch (err) {
+                    toast(t('settings.pushFailed', { reason: err.message || t('error.generic') }), 'error');
+                  }
+                } else {
+                  await disablePush().catch(() => {});
                 }
                 await patch({ reminders_on: input.checked }, { silent: true });
-                // Server push is what makes a reminder arrive with the site
-                // closed; in-tab reminders keep working if it is unavailable.
-                try {
-                  if (input.checked) await enablePush();
-                  else await disablePush();
-                } catch { /* reported by the status line below */ }
                 paintPushStatus();
               },
             }),

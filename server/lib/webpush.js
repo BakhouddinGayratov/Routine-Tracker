@@ -165,15 +165,53 @@ export function encryptPayload(payload, { p256dh, auth }, fixed = {}) {
 // --- Sending ------------------------------------------------------------------------
 
 /**
+ * What is wrong with the VAPID subject, or null. RFC 8292 wants a mailto: or
+ * https: URI, and Apple goes further: it answers 403 BadJwtToken to a subject
+ * it cannot reach, such as one on localhost or a made-up .local domain.
+ */
+export function vapidSubjectProblem(subject = process.env.VAPID_SUBJECT) {
+  if (!subject) return 'VAPID_SUBJECT is not set (Apple rejects the built-in placeholder)';
+  if (!/^(mailto:[^@\s]+@[^@\s]+\.[a-z]{2,}|https:\/\/[^\s]+)$/i.test(subject)) {
+    return `VAPID_SUBJECT must be "mailto:you@example.com" or an https URL, got "${subject}"`;
+  }
+  if (/localhost|\.local\b|\.test\b|example\.(com|org)/i.test(subject)) {
+    return `VAPID_SUBJECT "${subject}" is not a reachable address; Apple rejects it`;
+  }
+  return null;
+}
+
+/** Which push service an endpoint belongs to, for logs and diagnostics. */
+export function pushServiceOf(endpoint) {
+  let host = '';
+  try { host = new URL(endpoint).hostname; } catch { return 'unknown'; }
+  if (host.endsWith('push.apple.com')) return 'apple';
+  if (host.endsWith('fcm.googleapis.com')) return 'google';
+  if (host.endsWith('mozilla.com')) return 'mozilla';
+  if (host.endsWith('notify.windows.com')) return 'microsoft';
+  return host;
+}
+
+// What the push services' failure codes mean, so a log line says what to fix.
+const STATUS_HINT = {
+  400: 'malformed request',
+  403: 'VAPID rejected — the key pair or subject is wrong (Apple: BadJwtToken)',
+  404: 'subscription not found — removed',
+  410: 'subscription expired or unsubscribed — removed',
+  413: 'payload too large',
+  429: 'rate limited',
+};
+
+/**
  * Deliver one notification.
  *
- * @returns {Promise<{ ok: boolean, gone: boolean, status: number }>}
+ * @returns {Promise<{ ok: boolean, gone: boolean, status: number, reason?: string }>}
  *   `gone` means the subscription no longer exists (404/410) and should be
- *   deleted; any other failure is left for the next attempt.
+ *   deleted; any other failure is left for the next attempt. `reason` is the
+ *   push service's own explanation (Apple sends {"reason":"BadJwtToken"}).
  */
-export async function sendPush(subscription, message, { ttl = 60 * 60, fetchImpl = fetch } = {}) {
+export async function sendPush(subscription, message, { ttl = 60 * 60, fetchImpl = fetch, log = console } = {}) {
   if (!isAllowedEndpoint(subscription.endpoint)) {
-    return { ok: false, gone: true, status: 0 };
+    return { ok: false, gone: true, status: 0, reason: 'endpoint not on a known push service' };
   }
 
   const body = encryptPayload(JSON.stringify(message), subscription);
@@ -192,5 +230,21 @@ export async function sendPush(subscription, message, { ttl = 60 * 60, fetchImpl
     signal: AbortSignal.timeout(10_000),
   });
 
-  return { ok: res.ok, gone: res.status === 404 || res.status === 410, status: res.status };
+  const gone = res.status === 404 || res.status === 410;
+  if (res.ok) return { ok: true, gone: false, status: res.status };
+
+  // A failed push used to vanish without a trace. The body is where Apple and
+  // Google say why; it is short, but capped in case a service sends a page.
+  let reason = '';
+  try {
+    const text = (await res.text()).slice(0, 300);
+    try { reason = JSON.parse(text).reason || text; } catch { reason = text; }
+  } catch { /* no body */ }
+
+  log.warn?.(
+    `push failed: ${pushServiceOf(subscription.endpoint)} ${res.status}`
+    + `${reason ? ` ${reason}` : ''} — ${STATUS_HINT[res.status] || 'unexpected response'}`
+    + ` (subscription ${subscription.id ?? '?'}, user ${subscription.user_id ?? '?'})`,
+  );
+  return { ok: false, gone, status: res.status, reason: reason || STATUS_HINT[res.status] || '' };
 }

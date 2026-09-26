@@ -10,8 +10,9 @@ import { notFound, errorHandler } from './middleware/error.js';
 import { authRouter } from './routes/auth.js';
 import { routinesRouter } from './routes/routines.js';
 import { goalsRouter } from './routes/goals.js';
-import { pushRouter } from './routes/push.js';
+import { pushRouter, notificationsRouter } from './routes/push.js';
 import { scheduleReminders } from './lib/reminders.js';
+import { vapidSubjectProblem } from './lib/webpush.js';
 import { daysRouter } from './routes/days.js';
 import { statsRouter } from './routes/stats.js';
 import { journalRouter } from './routes/journal.js';
@@ -83,6 +84,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/routines', requireAuth, routinesRouter);
 app.use('/api/goals', requireAuth, goalsRouter);
 app.use('/api/push', requireAuth, pushRouter);
+app.use('/api/notifications', requireAuth, notificationsRouter);
 app.use('/api/days', requireAuth, daysRouter);
 app.use('/api/stats', requireAuth, statsRouter);
 app.use('/api/journal', requireAuth, journalRouter);
@@ -120,7 +122,13 @@ const server = app.listen(config.port, () => {
   // change is visible in the log rather than silent.
   for (const name of appliedMigrations) console.log(`  migrated: ${name}`);
   if (config.backup.enabled) scheduleBackups(db, config.backup);
-  if (config.pushReminders) scheduleReminders();
+  if (config.pushReminders) {
+    scheduleReminders();
+    // A bad subject makes Apple refuse every push with 403; say so at boot,
+    // not after a day of reminders that never arrived.
+    const problem = config.env === 'production' && vapidSubjectProblem();
+    console.log(problem ? `  push: WARNING ${problem}` : '  push: VAPID configured');
+  }
   console.log('');
 });
 

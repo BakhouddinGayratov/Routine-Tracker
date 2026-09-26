@@ -201,7 +201,8 @@ node scripts/restore-backup.mjs data/backups/routine-tracker-2026-09-20.json.gz 
 | Render jurnalida `password authentication failed` | `DATABASE_URL` dagi parol noto‘g‘ri yoki `[YOUR-PASSWORD]` o‘rnini almashtirmagansiz |
 | `no pg_hba.conf entry` yoki SSL xatosi | Manzil oxiriga `?sslmode=require` qo‘shing |
 | Sayt birinchi ochilishda 40 soniya kutadi | Server uxlagan. 4-bo‘limdagi pingni sozlang |
-| Eslatmalar kelmay qoldi | `VAPID_*` kalitlari o‘zgargan bo‘lishi mumkin. Telefonda Sozlamalar → Eslatmalarni o‘chirib, qayta yoqing |
+| Eslatmalar kelmay qoldi | Tizimga kirgan holda `https://<nomingiz>.onrender.com/api/notifications/test-push` ni oching: nechta qurilma obuna bo‘lgani (iPhone — `apple`), Apple/Google javobi (`403 BadJwtToken` va h.k.) va nima qilish kerakligi (`advice`) ko‘rinadi. Render jurnalida `push failed:` qatorlarini ham qidiring. `VAPID_*` kalitlari o‘zgargan bo‘lsa, telefonda Sozlamalar → Eslatmalarni o‘chirib, qayta yoqing |
+| iPhone’da eslatma yo‘q | Ilova Safari → Bosh ekranga qo‘shish orqali o‘rnatilgan va **belgidan** ochilgan bo‘lishi shart (iOS 16.4+). So‘ng Sozlamalar → **“Shu qurilmada yoqish”** tugmasi |
 | Jurnalda `backup FAILED` | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `BACKUP_BUCKET` to‘g‘rimi va bucket yaratilganmi |
 | Jadvallar yaratilmadi | Render jurnaliga qarang: `database: postgres` qatori bormi. Bo‘lmasa `DATABASE_URL` o‘rnatilmagan |
 

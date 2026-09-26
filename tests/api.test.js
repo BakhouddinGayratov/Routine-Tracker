@@ -488,6 +488,55 @@ await test('only https endpoints on known push services are accepted', async () 
   assert.ok(!webpush.isAllowedEndpoint('https://user:pass@fcm.googleapis.com/x'), 'credentials in URL');
 });
 
+await test("a refused push reports and logs the push service's reason", async () => {
+  const keys = nodeCrypto.createECDH('prime256v1');
+  keys.generateKeys();
+  const sub = {
+    id: 7, user_id: 3,
+    endpoint: 'https://web.push.apple.com/QGx-test',
+    p256dh: keys.getPublicKey().toString('base64url'),
+    auth: nodeCrypto.randomBytes(16).toString('base64url'),
+  };
+  const logged = [];
+  const fetchImpl = async () => new Response(JSON.stringify({ reason: 'BadJwtToken' }), { status: 403 });
+
+  const result = await webpush.sendPush(sub, { title: 't' }, { fetchImpl, log: { warn: (m) => logged.push(m) } });
+  assert.deepEqual([result.ok, result.gone, result.status, result.reason], [false, false, 403, 'BadJwtToken']);
+  assert.equal(logged.length, 1);
+  assert.match(logged[0], /apple 403 BadJwtToken/);
+  assert.match(logged[0], /subscription 7, user 3/);
+
+  const gone = await webpush.sendPush(sub, { title: 't' }, {
+    fetchImpl: async () => new Response('', { status: 410 }), log: { warn: () => {} },
+  });
+  assert.equal(gone.gone, true, '410 Gone means the subscription must be dropped');
+});
+
+await test('the VAPID subject is checked the way Apple checks it', async () => {
+  assert.equal(webpush.vapidSubjectProblem('mailto:owner@gmail.com'), null);
+  assert.equal(webpush.vapidSubjectProblem('https://routine.example.net'), null);
+  assert.match(webpush.vapidSubjectProblem(''), /not set/);
+  assert.match(webpush.vapidSubjectProblem('owner@gmail.com'), /mailto:/, 'the mailto: prefix is required');
+  assert.match(webpush.vapidSubjectProblem('mailto:admin@routine-tracker.local'), /not a reachable/);
+  assert.match(webpush.vapidSubjectProblem('mailto:me@localhost'), /mailto:|reachable/);
+});
+
+await test('the push diagnosis reports a user with no subscribed device', async () => {
+  const fresh = await api('POST', '/api/auth/register', {
+    name: 'Push check', email: `pushcheck${Date.now()}@example.com`, password: 'goodpass123',
+  }, { noAuth: true });
+  const res = await fetch(`${base}/api/notifications/test-push`, { headers: { Authorization: `Bearer ${fresh.body.token}` } });
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.equal(body.subscriptions, 0);
+  assert.equal(body.appleSubscriptions, 0);
+  assert.ok(body.vapid.publicKey, 'the public key is shown so it can be compared with the device');
+  assert.equal(typeof body.advice, 'string');
+
+  const anonymous = await fetch(`${base}/api/notifications/test-push`);
+  assert.equal(anonymous.status, 401);
+});
+
 const browserKeys = nodeCrypto.createECDH('prime256v1');
 browserKeys.generateKeys();
 const subscription = {
@@ -792,7 +841,12 @@ await test('importing the same database twice does not duplicate it', async () =
 
 // --- Database settings and backups ---------------------------------------
 
-const { backupDatabase, snapshot, TABLES } = await import('../server/db/backup.js');
+const { backupDatabase, snapshot, storageAuth, TABLES } = await import('../server/db/backup.js');
+
+await test('a new sb_secret key goes in apikey only, a legacy JWT in both headers', async () => {
+  assert.deepEqual(storageAuth('sb_secret_abc'), { apikey: 'sb_secret_abc' });
+  assert.deepEqual(storageAuth('eyJhbGciOi.x.y'), { apikey: 'eyJhbGciOi.x.y', Authorization: 'Bearer eyJhbGciOi.x.y' });
+});
 const backupDir = path.join(here, '..', 'data', `test-backups-${Date.now()}`);
 await test('the database is PostgreSQL and enforces its foreign keys', async () => {
   const { version } = await db.prepare('SELECT version() AS version').get();

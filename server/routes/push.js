@@ -2,7 +2,7 @@ import express from 'express';
 import { db } from '../db/index.js';
 import { ApiError } from '../lib/errors.js';
 import { asyncHandler } from '../middleware/error.js';
-import { vapidKeys, isAllowedEndpoint, sendPush } from '../lib/webpush.js';
+import { vapidKeys, isAllowedEndpoint, sendPush, pushServiceOf, vapidSubjectProblem } from '../lib/webpush.js';
 import { pushText } from '../lib/reminders.js';
 
 export const pushRouter = express.Router();
@@ -65,19 +65,64 @@ pushRouter.delete('/subscribe', asyncHandler(async (req, res) => {
   res.json({ ok: true, removed: result.changes });
 }));
 
+/**
+ * Push a test notification to every browser of this account and report, per
+ * browser, what its push service answered. The status and reason are the
+ * point: "403 BadJwtToken" from Apple names the fix, "failed" does not.
+ */
+async function sendTestPush(user, send = sendPush) {
+  const subscriptions = (await db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ? ORDER BY id').all(user.id));
+  const message = { title: 'Routine Tracker', body: pushText(user.locale, 'test'), tag: 'rt-test', url: '/settings' };
+  const results = [];
+
+  for (const subscription of subscriptions) {
+    const row = { id: subscription.id, service: pushServiceOf(subscription.endpoint), created_at: subscription.created_at };
+    try {
+      const result = await send(subscription, message);
+      if (result.gone) await db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(subscription.id);
+      results.push({ ...row, ok: result.ok, status: result.status, reason: result.reason || '', removed: result.gone });
+    } catch (err) {
+      results.push({ ...row, ok: false, status: 0, reason: err.message, removed: false });
+    }
+  }
+
+  const sent = results.filter((r) => r.ok).length;
+  return { ok: sent > 0, sent, total: subscriptions.length, results };
+}
+
 /** Send a test notification to every browser of this account. */
 pushRouter.post('/test', asyncHandler(async (req, res) => {
-  const subscriptions = (await db.prepare('SELECT * FROM push_subscriptions WHERE user_id = ?').all(req.user.id));
-  if (!subscriptions.length) throw ApiError.badRequest('No browser is subscribed to notifications yet');
+  const count = (await db.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE user_id = ?').get(req.user.id)).n;
+  if (!count) throw ApiError.badRequest('No browser is subscribed to notifications yet');
+  res.json(await sendTestPush(req.user));
+}));
 
-  const message = { title: 'Routine Tracker', body: pushText(req.user.locale, 'test'), tag: 'rt-test', url: '/settings' };
-  let sent = 0;
-  for (const subscription of subscriptions) {
-    try {
-      const result = await sendPush(subscription, message);
-      if (result.gone) (await db.prepare('DELETE FROM push_subscriptions WHERE id = ?').run(subscription.id));
-      else if (result.ok) sent += 1;
-    } catch { /* reported through the count below */ }
-  }
-  res.json({ ok: sent > 0, sent, total: subscriptions.length });
+/**
+ * One-stop diagnosis, meant to be opened straight in the browser while signed
+ * in: is the server configured, is any device of this account subscribed —
+ * an iPhone shows up as service "apple" (web.push.apple.com) — and what do the
+ * push services say to a test right now. It sends a real notification, which
+ * is the only honest test; that is also why it answers only the signed-in user
+ * about their own devices.
+ */
+export const notificationsRouter = express.Router();
+
+notificationsRouter.get('/test-push', asyncHandler(async (req, res) => {
+  const report = await sendTestPush(req.user);
+  const subjectProblem = vapidSubjectProblem();
+  const apple = report.results.filter((r) => r.service === 'apple');
+
+  let advice = 'Push works: check the device for the test notification.';
+  if (subjectProblem) advice = subjectProblem;
+  else if (!report.total) advice = 'No device is subscribed. On iPhone: open the app from its Home Screen icon → Settings → Reminders → "Turn on for this device".';
+  else if (!report.ok) advice = 'Every push service refused the test; see results[].status and reason.';
+
+  res.set('Cache-Control', 'no-store').json({
+    vapid: { publicKey: vapidKeys().publicKey, subject: process.env.VAPID_SUBJECT || null, subjectOk: !subjectProblem },
+    subscriptions: report.total,
+    appleSubscriptions: apple.length,
+    sent: report.sent,
+    results: report.results,
+    advice,
+  });
 }));
