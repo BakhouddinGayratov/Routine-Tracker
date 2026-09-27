@@ -714,6 +714,55 @@ await test('profile settings can be updated', async () => {
   assert.equal(r.body.user.daily_goal, 90);
 });
 
+await test('the routine_defaults migration has run', async () => {
+  const column = await db.prepare(
+    "SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'routine_defaults'",
+  ).get();
+  assert.ok(column, 'users.routine_defaults exists');
+  const applied = await db.prepare('SELECT version FROM schema_migrations WHERE version = 2').get();
+  assert.ok(applied, 'migration 2 is recorded');
+});
+
+await test('a user can save defaults for new routines', async () => {
+  const r = await api('PATCH', '/api/auth/me', {
+    routine_defaults: { repeat_type: 'daily', duration_min: 30, reminder_min: 10, category: 'study', priority: 'high', icon: '📚', color: '#22c55e' },
+  });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.user.routine_defaults, {
+    repeat_type: 'daily', duration_min: 30, reminder_min: 10, category: 'study', priority: 'high', icon: '📚', color: '#22c55e',
+  });
+  const me = await api('GET', '/api/auth/me');
+  assert.equal(me.body.user.routine_defaults.duration_min, 30, 'numbers come back as numbers');
+});
+
+await test('a new routine starts from the user defaults, and the request wins', async () => {
+  const plain = await api('POST', '/api/routines', { title: 'Uses defaults', start_time: '08:00' });
+  assert.equal(plain.status, 201);
+  const r = plain.body.routine;
+  assert.deepEqual([r.repeat_type, r.duration_min, r.reminder_min, r.category, r.priority, r.icon, r.color],
+    ['daily', 30, 10, 'study', 'high', '📚', '#22c55e']);
+
+  const explicit = await api('POST', '/api/routines', { title: 'Overrides', repeat_type: 'once', category: 'work', reminder_min: null });
+  assert.deepEqual([explicit.body.routine.repeat_type, explicit.body.routine.category, explicit.body.routine.reminder_min],
+    ['once', 'work', null]);
+
+  await api('DELETE', `/api/routines/${r.id}`);
+  await api('DELETE', `/api/routines/${explicit.body.routine.id}`);
+});
+
+await test('invalid routine defaults are rejected, and {} resets them', async () => {
+  for (const bad of [{ repeat_type: 'weekly' }, { category: 'nope' }, { duration_min: 7 }, { color: 'red' }, 'daily', [1]]) {
+    const r = await api('PATCH', '/api/auth/me', { routine_defaults: bad });
+    assert.equal(r.status, 400, `should reject ${JSON.stringify(bad)}`);
+  }
+  const reset = await api('PATCH', '/api/auth/me', { routine_defaults: {} });
+  assert.deepEqual(reset.body.user.routine_defaults, {});
+  const back = await api('POST', '/api/routines', { title: 'App defaults again' });
+  assert.equal(back.body.routine.repeat_type, 'daily', 'the server default is unchanged for API callers');
+  assert.equal(back.body.routine.reminder_min, null);
+  await api('DELETE', `/api/routines/${back.body.routine.id}`);
+});
+
 await test('an invalid theme is rejected', async () => {
   const r = await api('PATCH', '/api/auth/me', { theme: 'neon' });
   assert.equal(r.status, 400);

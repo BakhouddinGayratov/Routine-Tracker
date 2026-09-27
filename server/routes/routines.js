@@ -6,6 +6,7 @@ import { asyncHandler } from '../middleware/error.js';
 import { describeRepeat, isDueOn } from '../lib/schedule.js';
 import { todayIn, addDays, dateRange } from '../lib/dates.js';
 import { routineStats } from '../lib/stats.js';
+import { routineDefaultsOf } from '../lib/auth.js';
 
 export const routinesRouter = express.Router();
 
@@ -115,7 +116,9 @@ routinesRouter.get('/:id', asyncHandler(async (req, res) => {
 }));
 
 routinesRouter.post('/', asyncHandler(async (req, res) => {
-  const body = { start_date: todayIn(req.user.timezone), ...req.body };
+  // The user's own presets (Settings → new routines) fill whatever the request
+  // leaves out; anything the request does send wins.
+  const body = { ...routineDefaultsOf(req.user), start_date: todayIn(req.user.timezone), ...req.body };
   const data = validate(body, writeSchema);
   assertCoherent(data);
   await assertGoalOwned(req.user.id, data.goal_id);

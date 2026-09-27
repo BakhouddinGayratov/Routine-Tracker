@@ -80,6 +80,21 @@ export function publicUser(row) {
     week_start: row.week_start,
     daily_goal: row.daily_goal,
     reminders_on: !!row.reminders_on,
+    routine_defaults: routineDefaultsOf(row),
     created_at: row.created_at,
   };
+}
+
+/**
+ * The user's own starting values for a new routine, as an object. Stored as
+ * JSON text; a row from before the column existed, or unreadable JSON, simply
+ * means "no preferences" rather than an error on every request.
+ */
+export function routineDefaultsOf(row) {
+  try {
+    const parsed = JSON.parse(row?.routine_defaults || '{}');
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }

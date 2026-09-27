@@ -127,7 +127,7 @@ export const db = {
 // touches nothing that already holds data.
 await db.exec(fs.readFileSync(path.join(here, 'schema.sql'), 'utf8'));
 
-export const appliedMigrations = await migrate(db);
+export const appliedMigrations = await migrate(db, tx);
 
 /**
  * Run `fn` inside a transaction and return its result.

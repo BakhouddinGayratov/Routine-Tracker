@@ -2,7 +2,7 @@ import { el } from '../dom.js';
 import { t, getLocale } from '../i18n.js';
 import { api, ApiError } from '../api.js';
 import { modal, toast } from '../ui.js';
-import { invalidateRoutines } from '../store.js';
+import { state, invalidateRoutines } from '../store.js';
 import {
   todayISO, formatDate, weekdayName, EMOJI_CHOICES, COLOR_CHOICES, CATEGORY_COLORS,
 } from '../utils.js';
@@ -27,19 +27,25 @@ const CATEGORIES = Object.keys(CATEGORY_COLORS);
  */
 export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, onSaved } = {}) {
   const isEdit = Boolean(routine);
+  // The person's own presets (Settings → New routines) apply to a new routine
+  // only; an existing one always opens as it was saved.
+  const preset = isEdit ? {} : (state.user?.routine_defaults || {});
+  // The preset length fills the finish time when a start is picked — until
+  // the user sets a finish themselves.
+  let endTouched = false;
 
   const draft = {
     title: routine?.title || '',
     goal_id: routine?.goal_id ?? goalId,
     notes: routine?.notes || '',
-    icon: routine?.icon || '✅',
-    color: routine?.color || '#6366f1',
-    category: routine?.category || 'personal',
-    priority: routine?.priority || 'normal',
+    icon: routine?.icon || preset.icon || '✅',
+    color: routine?.color || preset.color || '#6366f1',
+    category: routine?.category || preset.category || 'personal',
+    priority: routine?.priority || preset.priority || 'normal',
     start_time: routine?.start_time || '',
     duration_min: routine?.duration_min ?? 0,
     end_time: endTimeOf(routine),
-    repeat_type: routine?.repeat_type || 'once',
+    repeat_type: routine?.repeat_type || preset.repeat_type || 'once',
     repeat_days: routine?.repeat_days || '',
     repeat_every: routine?.repeat_every || 2,
     start_date: routine?.start_date || date || todayISO(),
@@ -47,7 +53,7 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
     goal_type: routine?.goal_type || 'check',
     target_value: routine?.target_value ?? 1,
     unit: routine?.unit || '',
-    reminder_min: routine?.reminder_min ?? null,
+    reminder_min: isEdit ? (routine.reminder_min ?? null) : (preset.reminder_min ?? null),
   };
 
   const errors = {};
@@ -345,14 +351,22 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
               el('label', { class: 'field__label', for: 'f-time' }, t('form.startTime')),
               el('input', {
                 class: 'input', id: 'f-time', type: 'time', value: draft.start_time,
-                oninput: (e) => { draft.start_time = e.target.value; syncDuration(); refreshPreview(); },
+                oninput: (e) => {
+                  draft.start_time = e.target.value;
+                  if (preset.duration_min && !endTouched && draft.start_time) {
+                    draft.end_time = formatClock(toMinutes(draft.start_time) + preset.duration_min);
+                    e.target.closest('.grid').querySelector('#f-end-time').value = draft.end_time;
+                  }
+                  syncDuration();
+                  refreshPreview();
+                },
               }),
             ),
             el('div', { class: 'field' },
               el('label', { class: 'field__label', for: 'f-end-time' }, t('form.endTime')),
               el('input', {
                 class: 'input', id: 'f-end-time', type: 'time', value: draft.end_time,
-                oninput: (e) => { draft.end_time = e.target.value; syncDuration(); refreshPreview(); },
+                oninput: (e) => { endTouched = true; draft.end_time = e.target.value; syncDuration(); refreshPreview(); },
               }),
             ),
           ),
@@ -369,6 +383,7 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
                   draft.start_time = nextQuarterHour();
                   field.querySelector('#f-time').value = draft.start_time;
                 }
+                endTouched = true;
                 draft.end_time = formatClock(toMinutes(draft.start_time) + minutes);
                 field.querySelector('#f-end-time').value = draft.end_time;
                 syncDuration();
@@ -377,6 +392,11 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
             }, minutes < 60 ? t('form.minutesShort', { count: minutes }) : t('form.hoursShort', { count: minutes / 60 }))),
           ),
           el('div', { class: 'field__hint' }, t('form.timeHint')),
+          // Presets can change fields folded away under "More options" (a
+          // daily repeat, a reminder), so say that they were applied.
+          Object.keys(preset).length
+            ? el('div', { class: 'field__hint' }, `${t('form.presetApplied')}: ${presetSummary(preset)}`)
+            : null,
         ),
 
         el('div', { class: 'field' },
@@ -487,6 +507,23 @@ function toMinutes(time) {
 function formatClock(minutes) {
   const wrapped = ((minutes % 1440) + 1440) % 1440;
   return `${String(Math.floor(wrapped / 60)).padStart(2, '0')}:${String(wrapped % 60).padStart(2, '0')}`;
+}
+
+/** "Every day · 30 min · 10 min before" — the presets that change behaviour. */
+export function presetSummary(preset) {
+  const parts = [];
+  if (preset.repeat_type) parts.push(t(`repeat.${preset.repeat_type}`));
+  if (preset.duration_min) {
+    parts.push(preset.duration_min < 60 || preset.duration_min % 60
+      ? t('form.minutesShort', { count: preset.duration_min })
+      : t('form.hoursShort', { count: preset.duration_min / 60 }));
+  }
+  if (preset.reminder_min === 0) parts.push(t('form.reminderAt'));
+  else if (preset.reminder_min) parts.push(t('form.reminderBefore', { count: preset.reminder_min }));
+  if (preset.category) parts.push(t(`cat.${preset.category}`));
+  if (preset.priority) parts.push(t(`priority.${preset.priority}`));
+  if (preset.icon) parts.push(preset.icon);
+  return parts.join(' · ');
 }
 
 /** The finish time implied by a saved routine's start time and duration. */

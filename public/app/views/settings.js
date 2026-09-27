@@ -4,7 +4,7 @@ import { t, LOCALES } from '../i18n.js';
 import { api, ApiError } from '../api.js';
 import { state, updateProfile, signOut } from '../store.js';
 import { toast, confirmDialog, modal, emptyState } from '../ui.js';
-import { COLOR_CHOICES, initials, formatDate } from '../utils.js';
+import { COLOR_CHOICES, EMOJI_CHOICES, CATEGORY_COLORS, initials, formatDate } from '../utils.js';
 import { requestNotificationPermission, notificationState } from '../reminders.js';
 import { enablePush, disablePush, pushState } from '../push.js';
 
@@ -92,6 +92,7 @@ export function renderSettings(container, { navigate }) {
       profileCard(),
       appearanceCard(),
       preferencesCard(),
+      routineDefaultsCard(),
       securityCard(),
       dataCard(),
       dangerCard(),
@@ -372,6 +373,92 @@ export function renderSettings(container, { navigate }) {
   };
 
   // --- Data ----------------------------------------------------------------
+
+  // --- New routine presets -------------------------------------------------
+
+  /**
+   * The values a new routine starts with. The app's own defaults suit nobody
+   * in particular; someone who plans every morning in 30-minute daily blocks
+   * should not have to set that on each routine. Only new routines use these.
+   */
+  const routineDefaultsCard = () => {
+    const current = user.routine_defaults || {};
+
+    const save = (key, value) => {
+      const next = { ...current };
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+      return patch({ routine_defaults: next }, { silent: true }).then(render);
+    };
+
+    const row = (title, control, desc) => el('div', { class: 'settings-row' },
+      el('div', { class: 'settings-row__text' },
+        el('div', { class: 'settings-row__title' }, title),
+        desc ? el('div', { class: 'settings-row__desc' }, desc) : null,
+      ),
+      el('div', { class: 'settings-row__control' }, control),
+    );
+
+    // A select whose options are [value, label]; values travel as text and
+    // `parse` turns the chosen one back into what the server stores.
+    const select = (key, options, selected, parse = (x) => x) => el('select', {
+      class: 'select',
+      onchange: (e) => save(key, parse(e.target.value)),
+    }, ...options.map(([value, label]) => el('option', { value: String(value), selected: String(value) === String(selected) }, label)));
+
+    const lengths = [0, 15, 30, 45, 60, 90, 120];
+    const lengthLabel = (m) => (!m ? t('defaults.noLength')
+      : m < 60 || m % 60 ? t('form.minutesShort', { count: m }) : t('form.hoursShort', { count: m / 60 }));
+
+    return el('section', { class: 'card', style: { 'margin-bottom': 'var(--s-4)' } },
+      el('div', { class: 'card__head' },
+        el('div', { class: 'card__title' }, t('defaults.title')),
+        Object.keys(current).length
+          ? el('button', {
+              class: 'btn btn--ghost btn--sm', type: 'button',
+              onclick: () => patch({ routine_defaults: {} }).then(render),
+            }, t('defaults.reset'))
+          : null,
+      ),
+      el('p', { class: 'settings-row__desc', style: { margin: '0 0 var(--s-3)' } }, t('defaults.desc')),
+
+      row(t('form.repeat'),
+        select('repeat_type', [['once', t('repeat.once')], ['daily', t('repeat.daily')]], current.repeat_type || 'once')),
+
+      row(t('defaults.length'),
+        select('duration_min', lengths.map((m) => [m, lengthLabel(m)]), current.duration_min ?? 0, Number),
+        t('defaults.lengthDesc')),
+
+      row(t('form.reminder'),
+        select('reminder_min', [
+          ['', t('form.reminderNone')],
+          [0, t('form.reminderAt')],
+          ...[5, 10, 15, 30, 60].map((m) => [m, t('form.reminderBefore', { count: m })]),
+        ], current.reminder_min ?? '', (x) => (x === '' ? null : Number(x)))),
+
+      row(t('form.category'),
+        select('category', Object.keys(CATEGORY_COLORS).map((c) => [c, t(`cat.${c}`)]), current.category || 'personal')),
+
+      row(t('form.priority'),
+        select('priority', ['low', 'normal', 'high'].map((p) => [p, t(`priority.${p}`)]), current.priority || 'normal')),
+
+      row(t('form.icon'),
+        select('icon', EMOJI_CHOICES.map((e) => [e, e]), current.icon || '✅')),
+
+      el('div', { class: 'field', style: { 'margin-top': 'var(--s-3)' } },
+        el('div', { class: 'field__label' }, t('form.color')),
+        el('div', { class: 'picker-grid' },
+          ...COLOR_CHOICES.map((color) => el('button', {
+            type: 'button',
+            class: ['swatch', color === (current.color || '#6366f1') && 'is-on'],
+            style: { background: color },
+            'aria-label': color,
+            onclick: () => save('color', color),
+          })),
+        ),
+      ),
+    );
+  };
 
   const dataCard = () => el('section', { class: 'card', style: { 'margin-bottom': 'var(--s-4)' } },
     el('div', { class: 'card__head' }, el('div', { class: 'card__title' }, t('settings.data'))),

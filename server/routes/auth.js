@@ -10,6 +10,38 @@ import { requireAuth } from '../middleware/auth.js';
 import { rateLimit, emailKey } from '../middleware/rateLimit.js';
 import { asyncHandler } from '../middleware/error.js';
 import { seedStarterRoutines } from '../lib/starter.js';
+import { CATEGORIES } from './routines.js';
+
+/**
+ * What a person may preset for their new routines. Every key is optional; an
+ * absent key keeps the app's own default. Repeats are limited to the two that
+ * need no further input — "weekly" would also need the days, and a preset
+ * that opens the form half-filled helps no one.
+ */
+const ROUTINE_DEFAULTS = {
+  repeat_type:  v.oneOf(['once', 'daily']),
+  duration_min: v.oneOf(['0', '15', '30', '45', '60', '90', '120']),
+  reminder_min: v.nullable(v.oneOf(['0', '5', '10', '15', '30', '60'])),
+  category:     v.oneOf(CATEGORIES),
+  priority:     v.oneOf(['low', 'normal', 'high']),
+  icon:         v.emoji(),
+  color:        v.color(),
+};
+
+/** A validator rule for the whole defaults object; stores it as JSON text. */
+function routineDefaultsRule(value, field) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    const err = new Error(`${field} must be an object`);
+    err.field = field;
+    throw err;
+  }
+  const clean = validate(value, ROUTINE_DEFAULTS, { partial: true });
+  // oneOf compares as text; the form works with numbers.
+  for (const key of ['duration_min', 'reminder_min']) {
+    if (clean[key] !== undefined && clean[key] !== null) clean[key] = Number(clean[key]);
+  }
+  return JSON.stringify(clean);
+}
 
 export const authRouter = express.Router();
 
@@ -103,6 +135,9 @@ authRouter.patch('/me', requireAuth, asyncHandler(async (req, res) => {
     week_start: v.int({ min: 0, max: 1 }),
     daily_goal: v.int({ min: 10, max: 100 }),
     reminders_on: v.bool(),
+    // Replaced whole, not merged: the Settings form always sends every key,
+    // and "reset to the app default" is sending the object without it.
+    routine_defaults: routineDefaultsRule,
   }, { partial: true });
 
   if (Object.keys(data).length === 0) throw ApiError.badRequest('Nothing to update');

@@ -22,6 +22,17 @@ const MIGRATIONS = [
   // the schema starts complete, and the SQLite data is brought over by
   // scripts/import-sqlite.mjs, so version 1 is a no-op kept for the record.
   { version: 1, name: 'baseline', async up() {} },
+  {
+    // Each person's starting values for a new routine (repeat, length,
+    // reminder, category, priority, icon, colour), chosen in Settings. A JSON
+    // object rather than seven columns: every key is optional, and a key that
+    // is absent falls back to the app's own default.
+    version: 2,
+    name: 'users.routine_defaults',
+    async up(db) {
+      await addColumn(db, 'users', 'routine_defaults', "TEXT NOT NULL DEFAULT '{}'");
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1].version : 0;
@@ -31,7 +42,7 @@ export const SCHEMA_VERSION = MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length -
  *
  * @returns {Promise<string[]>} the names of the migrations that actually ran
  */
-export async function migrate(db) {
+export async function migrate(db, tx) {
   await db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version    INTEGER PRIMARY KEY,
@@ -50,14 +61,19 @@ export async function migrate(db) {
     // One transaction per migration: a failure leaves the database on the last
     // version that did work, rather than half-way through this one. Postgres
     // rolls back DDL too, which SQLite could not promise.
-    await db.exec('BEGIN');
+    //
+    // It must run through `tx`, on one reserved connection. `db` is a pool on
+    // Supabase, so BEGIN, the ALTER and COMMIT sent through it could each land
+    // on a different connection — no transaction at all, and a stray open
+    // BEGIN left behind. PGlite, used by the tests, has a single connection
+    // and so could never show this.
     try {
-      await migration.up(db);
-      await db.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)')
-        .run(migration.version, migration.name);
-      await db.exec('COMMIT');
+      await tx(async (t) => {
+        await migration.up(t);
+        await t.prepare('INSERT INTO schema_migrations (version, name) VALUES (?, ?)')
+          .run(migration.version, migration.name);
+      });
     } catch (err) {
-      await db.exec('ROLLBACK');
       throw new Error(`Migration ${migration.version} (${migration.name}) failed: ${err.message}`);
     }
     applied.push(`${migration.version}. ${migration.name}`);
