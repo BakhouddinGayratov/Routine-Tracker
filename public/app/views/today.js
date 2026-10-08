@@ -634,6 +634,7 @@ export function renderToday(container, { date, navigate }) {
           class: 'btn btn--icon', 'data-tip': t('action.edit'),
           onclick: () => openRoutineForm(item, {
             weekStart: state.user.week_start,
+            day: selected,   // an edit from the day view changes only this day
             onSaved: () => { invalidateRoutines(); load(); },
           }),
         }, icon('edit', { size: 15 })),

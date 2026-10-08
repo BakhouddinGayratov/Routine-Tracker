@@ -189,6 +189,72 @@ async function excludeDay(t, routine, date) {
   await t.prepare('DELETE FROM reminders_sent WHERE routine_id = ? AND log_date = ?').run(routine.id, date);
 }
 
+/**
+ * Edit one day of a routine, leaving every other day as it was.
+ *
+ * A one-off is only that day, so it is simply updated. A repeating routine
+ * gets a single-day copy on that date carrying the edits, and the date is
+ * taken out of the original; whatever was already logged for the day (done,
+ * ✗) moves to the copy, so the edit does not lose it. Schedule fields are not
+ * accepted: changing how a routine repeats is an edit of the whole routine,
+ * made from the Routines page.
+ */
+const SCHEDULE_FIELDS = ['repeat_type', 'repeat_days', 'repeat_every', 'start_date', 'end_date'];
+
+routinesRouter.post('/:id/edit-day', asyncHandler(async (req, res) => {
+  const routine = await ownedRoutine(req.user.id, req.params.id);
+  const { date } = validate(
+    { date: req.body?.date ?? todayIn(req.user.timezone) },
+    { date: v.date() },
+  );
+  if (!isDueOn(routine, date)) throw ApiError.badRequest('That routine is not scheduled on that day');
+
+  const body = { ...req.body };
+  delete body.date;
+  for (const key of SCHEDULE_FIELDS) delete body[key];
+  const data = validate(body, writeSchema, { partial: true });
+  for (const key of SCHEDULE_FIELDS) delete data[key];
+  if (Object.keys(data).length === 0) throw ApiError.badRequest('Nothing to update');
+  if ('goal_id' in data) await assertGoalOwned(req.user.id, data.goal_id);
+
+  const merged = {
+    ...routine, ...data,
+    repeat_type: 'once', repeat_days: '', repeat_every: 1, start_date: date, end_date: null,
+  };
+  assertCoherent(merged);
+
+  if (routine.repeat_type === 'once') {
+    const sets = Object.keys(data).map((k) => `${k} = @${k}`).join(', ');
+    await db.prepare(`UPDATE routines SET ${sets}, updated_at = utc_now() WHERE id = @id AND user_id = @user_id`)
+      .run({ ...data, id: routine.id, user_id: req.user.id });
+    const updated = await db.prepare('SELECT * FROM routines WHERE id = ?').get(routine.id);
+    return res.json({ ok: true, copied: false, routine: decorate(updated) });
+  }
+
+  const copyId = await tx(async (t) => {
+    const info = await t.prepare(
+      `INSERT INTO routines (
+         user_id, goal_id, title, notes, icon, color, category, priority, start_time, duration_min,
+         repeat_type, repeat_days, repeat_every, start_date, end_date,
+         goal_type, target_value, unit, reminder_min, sort_order
+       ) VALUES (
+         @user_id, @goal_id, @title, @notes, @icon, @color, @category, @priority, @start_time, @duration_min,
+         'once', '', 1, @start_date, NULL,
+         @goal_type, @target_value, @unit, @reminder_min, @sort_order
+       ) RETURNING id`,
+    ).run({ ...merged, user_id: req.user.id });
+
+    // The day's log follows the edit; then the date leaves the original.
+    await t.prepare('UPDATE logs SET routine_id = ? WHERE routine_id = ? AND log_date = ?')
+      .run(info.lastInsertRowid, routine.id, date);
+    await excludeDay(t, routine, date);
+    return info.lastInsertRowid;
+  });
+
+  const copy = await db.prepare('SELECT * FROM routines WHERE id = ?').get(copyId);
+  res.json({ ok: true, copied: true, routine: decorate(copy) });
+}));
+
 routinesRouter.post('/:id/remove-day', asyncHandler(async (req, res) => {
   const routine = await ownedRoutine(req.user.id, req.params.id);
   const { date } = validate(

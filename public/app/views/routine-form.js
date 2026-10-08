@@ -21,12 +21,16 @@ const CATEGORIES = Object.keys(CATEGORY_COLORS);
  * one day should not quietly appear on every other day as well.
  *
  * @param {object|null} routine  existing routine, or null to create
- * @param {object} options       { weekStart, date, goalId, onSaved } — `date` is
+ * @param {object} options       { weekStart, date, goalId, day, onSaved } — `date` is
  *                               the day the form was opened from (default
- *                               today); `goalId` preselects a goal
+ *                               today); `goalId` preselects a goal; `day` makes
+ *                               an edit apply to that one date only
  */
-export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, onSaved } = {}) {
+export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, day = null, onSaved } = {}) {
   const isEdit = Boolean(routine);
+  // `day` (from the day view): the edit applies to that one date only. The
+  // schedule fields are hidden and the server keeps every other day as it was.
+  const dayOnly = isEdit && Boolean(day);
   // The person's own presets (Settings → New routines) apply to a new routine
   // only; an existing one always opens as it was saved.
   const preset = isEdit ? {} : (state.user?.routine_defaults || {});
@@ -71,7 +75,9 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
 
   modal({
     title: isEdit ? t('form.editRoutine') : t('form.newRoutine'),
-    subtitle: isEdit ? routine.title : null,
+    subtitle: dayOnly
+      ? t('form.editDayOnly', { title: routine.title, date: formatDate(day, { locale: getLocale() }) })
+      : isEdit ? routine.title : null,
     size: 'wide',
     build: (close) => {
       const repeatSlot = el('div');
@@ -250,7 +256,8 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
           ),
         ),
 
-        el('div', { class: 'field' },
+        // A one-day edit cannot touch the schedule, so its fields are left out.
+        dayOnly ? null : el('div', { class: 'field' },
           el('label', { class: 'field__label', for: 'f-repeat' }, t('form.repeat')),
           el('select', {
             class: 'select', id: 'f-repeat',
@@ -258,9 +265,9 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
           }, ...['daily', 'weekly', 'interval', 'monthly', 'once'].map((r) =>
             el('option', { value: r, selected: r === draft.repeat_type }, t(`repeat.${r}`)))),
         ),
-        repeatSlot,
+        dayOnly ? null : repeatSlot,
 
-        el('div', { class: 'grid grid--2' },
+        dayOnly ? null : el('div', { class: 'grid grid--2' },
           el('div', { class: 'field' },
             el('label', { class: 'field__label', for: 'f-start' }, t('form.startDate')),
             el('input', {
@@ -443,9 +450,15 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, o
         };
 
         try {
-          const result = isEdit
-            ? await api.updateRoutine(routine.id, payload)
-            : await api.createRoutine(payload);
+          let result;
+          if (dayOnly) {
+            const { repeat_type: _r, repeat_days: _d, repeat_every: _e, start_date: _s, end_date: _n, ...dayFields } = payload;
+            result = await api.editRoutineDay(routine.id, day, dayFields);
+          } else {
+            result = isEdit
+              ? await api.updateRoutine(routine.id, payload)
+              : await api.createRoutine(payload);
+          }
           invalidateRoutines();
           toast(isEdit ? t('toast.routineUpdated') : t('toast.routineCreated'));
           close(result.routine);

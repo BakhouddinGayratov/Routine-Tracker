@@ -309,6 +309,49 @@ await test('removing only one day keeps every other day of a repeating routine',
   await api('DELETE', `/api/routines/${id}`);
 });
 
+await test('editing one day of a repeating routine leaves every other day alone', async () => {
+  const created = await api('POST', '/api/routines', {
+    title: 'Evening pages', start_date: today, repeat_type: 'daily', start_time: '21:00', duration_min: 30,
+  });
+  const id = created.body.routine.id;
+  await api('POST', '/api/days/log', { routine_id: id, date: today, status: 'done' });
+
+  const r = await api('POST', `/api/routines/${id}/edit-day`, {
+    date: today, title: 'Evening pages — short', start_time: '22:15',
+    repeat_type: 'weekly', start_date: '2000-01-01',   // schedule fields are ignored
+  });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.copied, true);
+  const copy = r.body.routine;
+  assert.notEqual(copy.id, id);
+  assert.deepEqual([copy.title, copy.start_time, copy.repeat_type, copy.start_date, copy.duration_min],
+    ['Evening pages — short', '22:15', 'once', today, 30]);
+
+  const day = await api('GET', `/api/days/${today}`);
+  const shown = day.body.items.filter((i) => i.title.startsWith('Evening pages'));
+  assert.equal(shown.length, 1, 'the day shows the edited copy, not both');
+  assert.equal(shown[0].id, copy.id);
+  assert.equal(shown[0].status, 'done', "the day's tick moved with the edit");
+
+  const next = await api('GET', `/api/days/${tomorrow}`);
+  const original = next.body.items.find((i) => i.id === id);
+  assert.deepEqual([original.title, original.start_time], ['Evening pages', '21:00'], 'tomorrow is untouched');
+
+  await api('DELETE', `/api/routines/${copy.id}`);
+  await api('DELETE', `/api/routines/${id}`);
+});
+
+await test('editing the day of a one-off simply updates it', async () => {
+  const created = await api('POST', '/api/routines', { title: 'Call mum', start_date: today, repeat_type: 'once' });
+  const r = await api('POST', `/api/routines/${created.body.routine.id}/edit-day`, { date: today, title: 'Call mum and dad' });
+  assert.equal(r.body.copied, false);
+  assert.equal(r.body.routine.id, created.body.routine.id);
+  assert.equal(r.body.routine.title, 'Call mum and dad');
+  const empty = await api('POST', `/api/routines/${created.body.routine.id}/edit-day`, { date: today, repeat_type: 'daily' });
+  assert.equal(empty.status, 400, 'a schedule change alone is not a one-day edit');
+  await api('DELETE', `/api/routines/${created.body.routine.id}`);
+});
+
 await test('removing the only day of a one-off deletes it', async () => {
   const created = await api('POST', '/api/routines', { title: 'Dentist', start_date: today, repeat_type: 'once' });
   const r = await api('POST', `/api/routines/${created.body.routine.id}/remove-day`, { date: today });
