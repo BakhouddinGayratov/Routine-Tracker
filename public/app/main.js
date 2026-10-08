@@ -1,7 +1,7 @@
 import { el, mount } from './dom.js';
-import { icon } from './icons.js';
+import { icon, brandMark } from './icons.js';
 import { t, getLocale } from './i18n.js';
-import { state, bootstrap, subscribe, signOut, updateProfile, refreshSummary } from './store.js';
+import { state, bootstrap, subscribe, signOut, updateProfile, refreshSummary, THEMES } from './store.js';
 import { toast, emptyState } from './ui.js';
 import { api } from './api.js';
 import { openPalette } from './palette.js';
@@ -152,7 +152,7 @@ function sidebar(activeNav) {
       class: 'brand', href: '/today',
       onclick: (e) => { e.preventDefault(); navigate('/today'); },
     },
-      el('div', { class: 'brand__logo' }, icon('check', { size: 18, stroke: 3 })),
+      el('div', { class: 'brand__logo' }, brandMark(30)),
       el('div', { class: 'brand__text' },
         el('div', { class: 'brand__name' }, t('app.name')),
         el('div', { class: 'brand__tag' }, t('app.tagline')),
@@ -295,10 +295,10 @@ function header(activeNav) {
 
       el('button', {
         class: 'btn btn--icon',
-        'data-tip': state.theme === 'dark' ? t('settings.themeLight') : t('settings.themeDark'),
+        'data-tip': `${t('settings.theme')}: ${t(`theme.${nextTheme()}`)}`,
         'aria-label': t('settings.theme'),
         onclick: toggleTheme,
-      }, icon(state.theme === 'dark' ? 'sun' : 'moon', { size: 17 })),
+      }, icon(state.theme === 'light' ? 'moon' : state.theme === 'dark' ? 'book' : 'sun', { size: 17 })),
 
       el('button', {
         class: 'btn btn--primary btn--sm',
@@ -394,8 +394,13 @@ function paletteActions() {
   ];
 }
 
+/** The theme after the current one: Daftar → Tablo → Siyoh → Daftar. */
+function nextTheme() {
+  return THEMES[(THEMES.indexOf(state.theme) + 1) % THEMES.length];
+}
+
 async function toggleTheme() {
-  const next = state.theme === 'dark' ? 'light' : 'dark';
+  const next = nextTheme();
   try {
     await updateProfile({ theme: next });
   } catch {

@@ -106,7 +106,7 @@ export function renderRoutineDetail(container, { id, navigate }) {
         kpi(t('stats.bestStreak'), stats.best_streak, t('misc.days'), '🏆'),
         kpi(t('stats.completion'), stats.rate === null ? '—' : `${pct(stats.rate)}%`,
           stats.missed ? `✗ ${stats.missed} ${t('stats.missed')} · ${t('stats.days', { count: 90 })}` : t('stats.days', { count: 90 }), '🎯'),
-        kpi('Last done', stats.last_done ? formatDate(stats.last_done, { locale: state.user.locale }) : t('misc.never'), '', '📅'),
+        kpi(t('routines.lastDone'), stats.last_done ? formatDate(stats.last_done, { locale: state.user.locale }) : t('misc.never'), '', '📅'),
       ),
 
       el('section', { class: 'section' },
@@ -137,7 +137,7 @@ export function renderRoutineDetail(container, { id, navigate }) {
   };
 
   const kpi = (label, value, foot, emoji) => el('div', { class: 'kpi' },
-    el('div', { class: 'kpi__label' }, el('span', null, emoji), label),
+    el('div', { class: 'kpi__label' }, label),
     el('div', { class: 'kpi__value' }, String(value)),
     foot ? el('div', { class: 'kpi__foot' }, foot) : null,
   );

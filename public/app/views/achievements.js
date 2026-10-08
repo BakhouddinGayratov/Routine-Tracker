@@ -20,7 +20,7 @@ export function renderAchievements(container) {
       render(data);
       // The server reports a badge as "new" exactly once; celebrate it here.
       if (data.newly_unlocked.length) {
-        celebrate(80);
+        celebrate({ big: t('celebrate.badge') });
         const first = data.achievements.find((a) => a.code === data.newly_unlocked[0]);
         if (first) toast(t('achv.newUnlock', { name: first.name }));
       }

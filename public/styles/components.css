@@ -15,7 +15,6 @@
   border-radius: var(--r-md);
   font-size: var(--text-sm);
   font-weight: 600;
-  letter-spacing: -0.01em;
   white-space: nowrap;
   color: var(--fg);
   transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease),
@@ -26,12 +25,10 @@
 .btn:active { transform: translateY(1px) scale(0.99); }
 .btn:disabled, .btn[aria-busy='true'] { opacity: 0.58; pointer-events: none; }
 
-.btn--primary {
-  background: linear-gradient(135deg, var(--brand-500), var(--violet-500));
-  color: #fff;
-  box-shadow: 0 8px 22px -10px rgba(99, 102, 241, 0.85);
-}
-.btn--primary:hover { filter: brightness(1.08); box-shadow: 0 12px 28px -10px rgba(99, 102, 241, 0.95); }
+/* One flat, solid accent — no gradient, no glow. Pressing it sinks it. */
+.btn--primary { background: var(--accent); color: var(--on-accent); }
+.btn--primary:hover { background: var(--accent-strong); }
+:root[data-theme='dark'] .btn--primary { font-family: var(--font-wide); font-size: var(--text-xs); font-weight: 600; }
 
 .btn--secondary {
   background: var(--surface-2);
@@ -80,7 +77,7 @@
   box-shadow: var(--shadow-sm);
 }
 .card--flush { padding: 0; overflow: hidden; }
-.card--glass { background: color-mix(in srgb, var(--surface) 78%, transparent); backdrop-filter: blur(12px); }
+.card--glass { background: var(--surface); }
 .card__head {
   display: flex;
   align-items: center;
@@ -88,11 +85,12 @@
   gap: var(--s-3);
   margin-bottom: var(--s-4);
 }
-.card__title { font-size: var(--text-base); font-weight: 640; }
+.card__title { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking); font-size: var(--text-md); }
+:root[data-theme='dark'] .card__title { font-size: var(--text-sm); }
 .card__hint { font-size: var(--text-xs); color: var(--fg-subtle); }
 
 .card--interactive { transition: transform var(--t-base) var(--ease-out), box-shadow var(--t-base) var(--ease-out), border-color var(--t-base) var(--ease); }
-.card--interactive:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: var(--shadow-md); }
+.card--interactive:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
 
 /* --- KPI tiles ----------------------------------------------------------- */
 
@@ -104,31 +102,14 @@
   background: var(--surface);
   overflow: hidden;
 }
-/* A whisper of the tile's accent, so a row of tiles reads as a set. */
-.kpi::after {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--kpi-accent, var(--accent)), transparent);
-  opacity: 0.85;
-}
-.kpi__label {
-  display: flex; align-items: center; gap: var(--s-2);
-  font-size: var(--text-xs);
-  font-weight: 620;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-subtle);
-}
+.kpi__label { display: flex; align-items: center; gap: var(--s-2); font-size: var(--text-sm); font-weight: 520; color: var(--fg-muted); }
 .kpi__value {
-  margin-top: var(--s-2);
-  font-size: var(--text-xl);
-  font-weight: 700;
-  letter-spacing: -0.035em;
-  line-height: 1.1;
+  margin-top: var(--s-3);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  line-height: 1;
 }
-.kpi__value small { font-size: var(--text-base); font-weight: 600; color: var(--fg-subtle); margin-left: 2px; }
+.kpi__value small { font-size: var(--text-base); font-weight: 500; color: var(--fg-subtle); margin-left: 3px; }
 .kpi__foot { margin-top: var(--s-2); font-size: var(--text-sm); color: var(--fg-muted); }
 
 .delta { display: inline-flex; align-items: center; gap: 3px; font-weight: 640; font-size: var(--text-sm); }
@@ -162,6 +143,7 @@
   background: var(--surface);
 }
 .textarea { resize: vertical; min-height: 96px; line-height: 1.6; }
+.input[type='time'], .input[type='date'] { font-family: var(--num-font); }
 
 .select {
   appearance: none;
@@ -206,7 +188,7 @@
   transition: transform var(--t-base) var(--spring), background var(--t-base) var(--ease);
 }
 .switch input:checked + .switch__track { background: var(--accent); border-color: transparent; }
-.switch input:checked + .switch__track::after { transform: translateX(18px); background: #fff; }
+.switch input:checked + .switch__track::after { transform: translateX(18px); background: var(--on-accent); }
 .switch input:focus-visible + .switch__track { box-shadow: 0 0 0 3px var(--accent-ring); }
 
 /* Segmented control */
@@ -307,8 +289,7 @@
   padding: 2px var(--s-2);
   border-radius: var(--r-sm);
   font-size: var(--text-xs);
-  font-weight: 640;
-  letter-spacing: 0.01em;
+  font-weight: 600;
 }
 .badge--success { background: var(--success-soft); color: var(--success); }
 .badge--warning { background: var(--warning-soft); color: var(--warning); }
@@ -332,7 +313,7 @@
 /* --- Progress ------------------------------------------------------------ */
 
 .bar {
-  height: 7px;
+  height: 6px;
   border-radius: var(--r-full);
   background: var(--surface-3);
   overflow: hidden;
@@ -340,12 +321,15 @@
 .bar__fill {
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--brand-400), var(--violet-400));
+  background: var(--accent);
+  transform-origin: left;
   transition: width var(--t-slow) var(--ease-out);
+  animation: bar-grow 700ms var(--ease-out) both;
 }
+@keyframes bar-grow { from { transform: scaleX(0); } }
 .bar--sm { height: 5px; }
-.bar--success .bar__fill { background: linear-gradient(90deg, #22c55e, #4ade80); }
-.bar--warning .bar__fill { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.bar--success .bar__fill { background: var(--success); }
+.bar--warning .bar__fill { background: var(--warning); }
 
 .ring { display: block; transform: rotate(-90deg); }
 .ring__track { fill: none; stroke: var(--surface-3); }
@@ -366,6 +350,11 @@
 
 /* --- Routine row --------------------------------------------------------- */
 
+/* A routine's own colour, pulled toward the theme's ink (--tint) so a bright
+   pick sits on paper or on black without shouting. */
+.routine, .routine-card, .tl-block, .routine__icon, .dial__arc {
+  --rc: color-mix(in oklab, var(--routine-color, var(--accent)) var(--tint-amount), var(--tint-base));
+}
 .routine {
   --routine-color: var(--accent);
   position: relative;
@@ -385,14 +374,30 @@
   left: 0; top: 12px; bottom: 12px;
   width: 3px;
   border-radius: 0 var(--r-full) var(--r-full) 0;
-  background: var(--routine-color);
+  background: var(--rc);
   opacity: 0.85;
   transition: opacity var(--t-base) var(--ease);
 }
 .routine:hover { border-color: var(--line-strong); background: var(--surface-2); }
-.routine.is-done { opacity: 0.62; }
+.routine.is-done { background: var(--surface-2); }
 .routine.is-done::before { opacity: 0.35; }
-.routine.is-done .routine__title { text-decoration: line-through; text-decoration-color: var(--fg-subtle); }
+.routine.is-done .routine__title,
+.routine.is-done .routine__meta,
+.routine.is-done .routine__time,
+.routine.is-done .routine__icon { opacity: 0.6; }
+/* Done reads as struck through by hand: the line draws across the title. */
+.routine__title { position: relative; display: inline-block; max-width: 100%; vertical-align: top; }
+.routine.is-done .routine__title::after {
+  content: '';
+  position: absolute;
+  left: 0; top: 55%;
+  height: 1.5px;
+  width: 100%;
+  background: currentColor;
+  transform-origin: left;
+  animation: strike 360ms var(--ease-out) both;
+}
+@keyframes strike { from { transform: scaleX(0); } }
 /* Marked ✗ (status 'skipped'): a plan that was not kept. It stays fully
    legible and reads as a failure — faded out, it looked like a rest day. */
 .routine.is-skipped { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
@@ -413,15 +418,25 @@
   transition: border-color var(--t-base) var(--ease), background var(--t-base) var(--ease),
               transform var(--t-fast) var(--spring), color var(--t-base) var(--ease);
 }
-.check:hover { border-color: var(--routine-color); transform: scale(1.08); }
+.check:hover { border-color: var(--rc); transform: scale(1.08); }
 .check svg { width: 16px; height: 16px; stroke-width: 3; }
 .check.is-done {
-  background: var(--routine-color);
-  border-color: var(--routine-color);
-  color: #fff;
+  background: var(--rc);
+  border-color: var(--rc);
+  color: var(--surface);
   animation: check-pop 380ms var(--spring);
 }
-.check.is-skipped { border-color: var(--danger); background: var(--danger); color: #fff; }
+/* The tick and the cross are drawn, not switched on. */
+.check.is-done svg path, .check.is-skipped svg path { stroke-dasharray: 30; stroke-dashoffset: 30; animation: draw 320ms var(--ease-out) 60ms forwards; }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+.check.is-skipped { border-color: var(--danger); background: var(--danger); color: var(--surface); animation: shake 380ms var(--ease); }
+@keyframes shake {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-3px) rotate(-6deg); }
+  50% { transform: translateX(3px) rotate(5deg); }
+  75% { transform: translateX(-2px); }
+}
+:root[data-theme='dark'] .check { border-radius: var(--r-sm); }
 
 /* Done / missed tally under the completion figure on Statistics. */
 .kpi-tally { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s-3); }
@@ -439,7 +454,7 @@
   position: absolute;
   inset: -6px;
   border-radius: 50%;
-  border: 2px solid var(--routine-color);
+  border: 2px solid var(--rc);
   animation: check-ripple 620ms var(--ease-out) forwards;
 }
 @keyframes check-ripple {
@@ -453,11 +468,11 @@
   width: 40px; height: 40px;
   flex: none;
   border-radius: var(--r-md);
-  background: color-mix(in srgb, var(--routine-color) 16%, transparent);
+  background: color-mix(in srgb, var(--rc) 16%, transparent);
   font-size: 19px;
 }
 .routine__body { min-width: 0; flex: 1; }
-.routine__title { font-weight: 600; letter-spacing: -0.01em; }
+.routine__title { font-weight: 600; }
 .routine__meta {
   display: flex;
   flex-wrap: wrap;
@@ -469,8 +484,9 @@
 }
 .routine__meta span { display: inline-flex; align-items: center; gap: 4px; }
 .routine__time {
+  font-family: var(--num-font);
   font-variant-numeric: tabular-nums;
-  font-weight: 620;
+  font-weight: 500;
   font-size: var(--text-sm);
   color: var(--fg-muted);
   min-width: 46px;
@@ -512,7 +528,7 @@
   transition: all var(--t-fast) var(--ease);
 }
 .qty__btn:hover { border-color: var(--accent); color: var(--fg); }
-.qty__value { font-variant-numeric: tabular-nums; font-size: var(--text-sm); font-weight: 620; min-width: 62px; text-align: center; }
+.qty__value { font-family: var(--num-font); font-variant-numeric: tabular-nums; font-size: var(--text-sm); font-weight: 620; min-width: 62px; text-align: center; }
 
 /* --- Modal --------------------------------------------------------------- */
 
@@ -524,7 +540,6 @@
   place-items: center;
   padding: var(--s-4);
   background: var(--overlay);
-  backdrop-filter: blur(6px);
   animation: fade-in var(--t-fast) var(--ease);
 }
 .modal {
@@ -552,7 +567,8 @@
   padding: var(--s-5) var(--s-6);
   border-bottom: 1px solid var(--line);
 }
-.modal__title { font-size: var(--text-md); font-weight: 660; }
+.modal__title { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking); font-size: var(--text-lg); line-height: 1.2; }
+:root[data-theme='dark'] .modal__title { font-size: var(--text-md); }
 .modal__sub { font-size: var(--text-sm); color: var(--fg-subtle); margin-top: 2px; }
 .modal__close { margin-left: auto; }
 .modal__body { padding: var(--s-6); overflow-y: auto; flex: 1; }
@@ -632,7 +648,6 @@
   justify-items: center;
   padding: 12vh var(--s-4) var(--s-4);
   background: var(--overlay);
-  backdrop-filter: blur(6px);
   animation: fade-in var(--t-fast) var(--ease);
 }
 .palette {
@@ -657,9 +672,7 @@
 .palette__group {
   padding: var(--s-3) var(--s-3) var(--s-1);
   font-size: var(--text-xs);
-  font-weight: 640;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
+  font-weight: 560;
   color: var(--fg-subtle);
 }
 .palette__item {
@@ -673,14 +686,14 @@
   font-size: var(--text-sm);
   color: var(--fg-muted);
 }
-.palette__item:hover, .palette__item.is-active { background: var(--accent-soft); color: var(--fg); }
+.palette__item:hover, .palette__item.is-active { background: var(--surface-2); color: var(--fg); box-shadow: inset 2px 0 0 var(--accent); }
 .palette__item kbd {
   margin-left: auto;
   padding: 1px 6px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface-3);
-  font-family: var(--font-sans);
+  font-family: var(--num-font);
   font-size: var(--text-xs);
 }
 .palette__empty { padding: var(--s-6); text-align: center; color: var(--fg-subtle); font-size: var(--text-sm); }
@@ -697,13 +710,12 @@
 .empty__art {
   display: grid;
   place-items: center;
-  width: 72px; height: 72px;
-  border-radius: var(--r-xl);
-  background: var(--accent-soft);
   font-size: 32px;
-  margin-bottom: var(--s-1);
+  color: var(--fg-muted);
+  margin-bottom: var(--s-2);
 }
-.empty__title { font-size: var(--text-md); font-weight: 640; }
+.empty__art svg { width: 140px; height: auto; }
+.empty__title { font-family: var(--font-display); font-weight: var(--display-weight); letter-spacing: var(--display-tracking); font-size: var(--text-lg); }
 .empty__text { color: var(--fg-muted); max-width: 42ch; }
 
 .skeleton {

@@ -69,7 +69,7 @@ authRouter.post('/register', registerLimiter, asyncHandler(async (req, res) => {
   if (existing) throw ApiError.conflict('An account with this email already exists');
 
   const password_hash = await hashPassword(data.password);
-  const palette = ['#6366f1', '#ec4899', '#14b8a6', '#f59e0b', '#8b5cf6', '#ef4444', '#22c55e'];
+  const palette = ['#c4492f', '#2f8a7c', '#4b4fb0', '#d0782a', '#7a4ba0', '#4f8f3a', '#b3477a'];
 
   const info = (await db.prepare(
     `INSERT INTO users (email, name, password_hash, timezone, locale, avatar_color)
@@ -131,7 +131,7 @@ authRouter.patch('/me', requireAuth, asyncHandler(async (req, res) => {
     avatar_color: v.color(),
     timezone: v.string({ max: 60 }),
     locale: v.oneOf(['en', 'uz', 'ru']),
-    theme: v.oneOf(['dark', 'light']),
+    theme: v.oneOf(['light', 'dark', 'ink']),   // Daftar, Tablo, Siyoh
     week_start: v.int({ min: 0, max: 1 }),
     daily_goal: v.int({ min: 10, max: 100 }),
     reminders_on: v.bool(),

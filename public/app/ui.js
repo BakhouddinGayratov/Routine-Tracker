@@ -1,6 +1,7 @@
 import { el, mount } from './dom.js';
 import { icon } from './icons.js';
 import { t } from './i18n.js';
+import { illustration } from './illustrations.js';
 
 /* --- Toasts --------------------------------------------------------------- */
 
@@ -169,34 +170,34 @@ export function choiceDialog({ title, message, choices }) {
 
 /* --- Celebration ---------------------------------------------------------- */
 
-/** A short confetti burst. Purely decorative, and skipped for reduced motion. */
-export function celebrate(count = 60) {
+/**
+ * A rubber stamp pressed onto the page: "Day closed", "Badge earned".
+ * It replaces a confetti burst — one decisive mark in the theme's accent,
+ * the way a finished page gets stamped, rather than a shower of colour.
+ * Decorative only (aria-hidden; the toast says it in words), and skipped
+ * when the user prefers reduced motion.
+ */
+export function celebrate({ big = t('celebrate.dayClosed'), small = '' } = {}) {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  document.querySelector('.stamp-layer')?.remove();
 
-  const colors = ['#818cf8', '#c084fc', '#22c55e', '#f59e0b', '#f43f5e', '#38bdf8'];
-  const layer = el('div', { class: 'confetti', 'aria-hidden': 'true' });
-
-  for (let i = 0; i < count; i += 1) {
-    layer.appendChild(el('i', {
-      style: {
-        left: `${Math.random() * 100}%`,
-        background: colors[i % colors.length],
-        'animation-duration': `${1.6 + Math.random() * 1.4}s`,
-        'animation-delay': `${Math.random() * 0.35}s`,
-        transform: `scale(${0.7 + Math.random() * 0.7})`,
-      },
-    }));
-  }
-
+  const layer = el('div', { class: 'stamp-layer', 'aria-hidden': 'true' },
+    el('div', { class: 'stamp' },
+      el('div', { class: 'stamp__inner' },
+        el('span', { class: 'stamp__big' }, big),
+        small ? el('span', { class: 'stamp__small' }, small) : null,
+      ),
+    ),
+  );
   document.body.appendChild(layer);
-  setTimeout(() => layer.remove(), 3600);
+  setTimeout(() => layer.remove(), 2100);
 }
 
 /* --- Building blocks ------------------------------------------------------ */
 
-export function emptyState({ art = '🌱', title, text, action }) {
+export function emptyState({ art = 'list', title, text, action }) {
   return el('div', { class: 'empty' },
-    el('div', { class: 'empty__art' }, art),
+    el('div', { class: 'empty__art' }, illustration(art) || art),
     el('div', { class: 'empty__title' }, title),
     text ? el('p', { class: 'empty__text' }, text) : null,
     action || null,
@@ -220,16 +221,10 @@ export function progressRing(percent, { size = 116, stroke = 10, label, sublabel
   const circumference = 2 * Math.PI * radius;
   const value = Math.max(0, Math.min(100, percent || 0));
   const offset = circumference * (1 - value / 100);
-  const gradientId = `ring-${Math.random().toString(36).slice(2, 9)}`;
 
+  // One solid stroke in the theme's accent (or the caller's colour).
   return el('div', { class: 'ring-wrap', style: { width: `${size}px`, height: `${size}px` } },
     el('svg', { class: 'ring', width: size, height: size, viewBox: `0 0 ${size} ${size}` },
-      el('defs', null,
-        el('linearGradient', { id: gradientId, x1: '0', y1: '0', x2: '1', y2: '1' },
-          el('stop', { offset: '0', 'stop-color': color || '#818cf8' }),
-          el('stop', { offset: '1', 'stop-color': color || '#c084fc' }),
-        ),
-      ),
       el('circle', {
         class: 'ring__track', cx: size / 2, cy: size / 2, r: radius, 'stroke-width': stroke,
       }),
@@ -237,14 +232,37 @@ export function progressRing(percent, { size = 116, stroke = 10, label, sublabel
         class: 'ring__value',
         cx: size / 2, cy: size / 2, r: radius,
         'stroke-width': stroke,
-        stroke: `url(#${gradientId})`,
+        stroke: color || 'var(--accent)',
         'stroke-dasharray': circumference,
         'stroke-dashoffset': offset,
       }),
     ),
     el('div', { class: 'ring-wrap__inner' },
-      el('div', { style: { 'font-size': `${size / 4.4}px`, 'font-weight': '700', 'letter-spacing': '-0.03em' }, class: 'tnum' }, label),
-      sublabel ? el('div', { class: 'subtle', style: { 'font-size': '11px', 'font-weight': '560' } }, sublabel) : null,
+      el('div', { style: { 'font-size': `${size / 4.4}px`, 'font-weight': '500' }, class: 'tnum' }, label),
+      sublabel ? el('div', { class: 'subtle tnum', style: { 'font-size': '11px' } }, sublabel) : null,
     ),
   );
+}
+
+/**
+ * Count a number up from zero in place: "0%" → "86%". Used for the day's
+ * percentage and the statistics figures on first paint, so the number feels
+ * measured rather than printed. Instant under reduced motion.
+ */
+export function countUp(node, to, { suffix = '', duration = 700 } = {}) {
+  const target = Number(to);
+  if (!Number.isFinite(target) || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    node.textContent = `${Number.isFinite(target) ? target : to}${suffix}`;
+    return node;
+  }
+  const start = performance.now();
+  const step = (now) => {
+    const p = Math.min(1, (now - start) / duration);
+    const eased = 1 - (1 - p) ** 3;
+    node.textContent = `${Math.round(target * eased)}${suffix}`;
+    if (p < 1) requestAnimationFrame(step);
+  };
+  node.textContent = `0${suffix}`;
+  requestAnimationFrame(step);
+  return node;
 }

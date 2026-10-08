@@ -1,11 +1,19 @@
 import { el, mount } from '../dom.js';
-import { icon } from '../icons.js';
+import { icon, brandMark } from '../icons.js';
 import { t, LOCALES, setLocale, getLocale } from '../i18n.js';
 import { signIn, signUp } from '../store.js';
 import { toast } from '../ui.js';
 import { passwordScore } from '../utils.js';
 import { ApiError } from '../api.js';
 import { isNativeApp, apiBase, saveApiUrl } from '../config.js';
+import { dayDial } from '../dial.js';
+
+// A believable day for the sign-in page's dial: what the app draws for you.
+const SAMPLE_DAY = [
+  ['06:30', 30, 'done', '#c4492f'], ['07:15', 45, 'done', '#4f8f3a'], ['09:00', 180, 'done', '#4b4fb0'],
+  ['13:00', 60, 'done', '#d0782a'], ['14:30', 150, 'skipped', '#4b4fb0'], ['18:00', 60, 'pending', '#2e7fb8'],
+  ['20:30', 45, 'pending', '#7a4ba0'], ['22:30', 30, 'pending', '#5c6670'],
+].map(([start_time, duration_min, status, color], id) => ({ id, start_time, duration_min, status, color }));
 
 /**
  * Sign in / sign up.
@@ -21,8 +29,9 @@ export function renderAuth(container, { mode = 'login', navigate }) {
   };
 
   const hero = () => el('section', { class: 'auth__hero' },
+    el('div', { class: 'auth__dial' }, dayDial(SAMPLE_DAY, { size: 320, now: '16:40', intro: true })),
     el('div', { class: 'brand' },
-      el('div', { class: 'brand__logo' }, icon('check', { size: 19, stroke: 3 })),
+      el('div', { class: 'brand__logo' }, brandMark(32)),
       el('div', null,
         el('div', { class: 'brand__name' }, t('app.name')),
         el('div', { class: 'brand__tag' }, t('app.tagline')),

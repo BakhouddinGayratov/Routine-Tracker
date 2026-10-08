@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state } from '../store.js';
-import { emptyState, skeletonList } from '../ui.js';
+import { emptyState, skeletonList, countUp } from '../ui.js';
 import { lineChart, barChart, barList, heatmap, heatmapLegend } from '../charts.js';
 import { formatDuration, pct, weekdayName, CATEGORY_COLORS } from '../utils.js';
 
@@ -52,6 +52,8 @@ export function renderStats(container, { navigate }) {
         ),
       ),
 
+      hasData ? story() : null,
+
       el('div', { class: 'grid grid--4' },
         kpi({
           label: t('stats.completion'),
@@ -63,31 +65,23 @@ export function renderStats(container, { navigate }) {
             el('span', { class: 'kpi-tally__done' }, `✓ ${pct(totals.done)}/${totals.due}`),
             totals.missed ? el('span', { class: 'kpi-tally__missed' }, `✗ ${totals.missed} ${t('stats.missed')}`) : null,
             totals.delta === null ? null : delta(totals.delta, days)),
-          accent: '#818cf8',
-          emoji: '🎯',
         }),
         kpi({
           label: t('stats.currentStreak'),
           value: String(streak.current),
           unit: ` ${t('misc.days')}`,
           foot: `${t('stats.bestStreak')}: ${streak.longest}`,
-          accent: '#f59e0b',
-          emoji: '🔥',
         }),
         kpi({
           label: t('stats.perfectDays'),
           value: String(totals.perfect_days),
           unit: `/${totals.active_days}`,
           foot: perfectStreak.longest ? `${t('stats.bestStreak')}: ${perfectStreak.longest}` : null,
-          accent: '#22c55e',
-          emoji: '💯',
         }),
         kpi({
           label: t('stats.timeInvested'),
           value: formatDuration(totals.minutes),
           foot: `${totals.routines} ${t('stats.activeRoutines').toLowerCase()}`,
-          accent: '#a855f7',
-          emoji: '⏱️',
         }),
       ),
 
@@ -112,13 +106,44 @@ export function renderStats(container, { navigate }) {
       action: el('button', { class: 'btn btn--primary', onclick: () => navigate('/today') }, t('nav.today')),
     }));
 
-  const kpi = ({ label, value, unit, foot, accent, emoji }) => el('div', {
-    class: 'kpi', style: { '--kpi-accent': accent },
-  },
-    el('div', { class: 'kpi__label' }, el('span', null, emoji), label),
-    el('div', { class: 'kpi__value' }, value, unit ? el('small', null, unit) : null),
+  const kpi = ({ label, value, unit, foot }) => el('div', { class: 'kpi' },
+    el('div', { class: 'kpi__label' }, label),
+    el('div', { class: 'kpi__value' }, countable(value), unit ? el('small', null, unit) : null),
     foot ? el('div', { class: 'kpi__foot' }, foot) : null,
   );
+
+  /** A plain number counts up on first paint; anything else is shown as is. */
+  const countable = (value) => (/^\d+$/.test(String(value)) ? countUp(el('span'), Number(value)) : value);
+
+  /**
+   * The period in words, above the figures: how it went, compared with the
+   * period before, and the one routine that most needs attention. A number
+   * says "86"; a sentence says whether that is good.
+   */
+  const story = () => {
+    const { totals } = overview;
+    const rate = pct(totals.rate);
+    const lead = [t('stats.storyRate', { days }), ' ', el('b', null, `${rate}%`)];
+    if (totals.delta !== null && Math.abs(totals.delta) >= 1) {
+      lead.push(' — ', totals.delta > 0
+        ? t('stats.storyUp', { n: Math.round(totals.delta) })
+        : el('span', { class: 'is-bad' }, t('stats.storyDown', { n: Math.round(-totals.delta) })));
+    }
+    lead.push('.');
+
+    const more = [];
+    if (totals.perfect_days) more.push(t('stats.storyPerfect', { n: totals.perfect_days, of: totals.active_days }));
+    if (totals.missed) more.push(t('stats.storyMissed', { n: totals.missed }));
+    const weakest = overview.struggling?.[0];
+    if (weakest && weakest.rate !== null && weakest.rate < 70) {
+      more.push(t('stats.storyWeakest', { title: weakest.title, rate: pct(weakest.rate) }));
+    }
+
+    return el('section', { class: 'story' },
+      el('p', { class: 'story__lead' }, ...lead),
+      more.length ? el('p', { class: 'story__more' }, more.join(' ')) : null,
+    );
+  };
 
   const delta = (value, range) => {
     const kind = value > 0.5 ? 'up' : value < -0.5 ? 'down' : 'flat';

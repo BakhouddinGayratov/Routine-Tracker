@@ -1,156 +1,278 @@
 /* ===========================================================================
    Design tokens
    ---------------------------------------------------------------------------
-   One palette expressed as semantic roles. Dark is the default look; the light
-   theme redefines only the roles, so every component below is written once.
+   Three looks, each a complete identity rather than a recolour:
+
+     light  "Daftar"  — a paper notebook: warm paper, ink, a red pencil.
+                         Serif headings (Literata), dot-grid page.
+     dark   "Tablo"   — a scoreboard: near-black, chalk white, one electric
+                         lime. Wide geometric display face (Unbounded), hard
+                         corners, numbers set in a monospace.
+     ink    "Siyoh"   — a fountain pen at night: deep ink blue, cream paper
+                         text, a brass accent. Serif headings.
+
+   The theme values stay 'light' and 'dark' (stored per user since day one)
+   plus the new 'ink'. Every component reads roles — --bg, --fg, --accent,
+   --font-display, --r-md … — so it is written once and wears all three.
    =========================================================================== */
 
+/* --- Fonts (self-hosted: the CSP allows no third-party font host) ---------
+   Variable files, split by script so a page only downloads what it renders:
+   Latin, Latin Extended (Uzbek o‘ g‘ sh), and Cyrillic (Russian). */
+
+@font-face { font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(/fonts/onest-latin-wght-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(/fonts/onest-latin-ext-wght-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: 'Onest'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(/fonts/onest-cyrillic-wght-normal.woff2) format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+
+@font-face { font-family: 'Literata'; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(/fonts/literata-latin-wght-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Literata'; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(/fonts/literata-latin-ext-wght-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: 'Literata'; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(/fonts/literata-cyrillic-wght-normal.woff2) format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+
+@font-face { font-family: 'Unbounded'; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(/fonts/unbounded-latin-wght-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'Unbounded'; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(/fonts/unbounded-latin-ext-wght-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: 'Unbounded'; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(/fonts/unbounded-cyrillic-wght-normal.woff2) format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin-wght-normal.woff2) format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin-ext-wght-normal.woff2) format('woff2');
+  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF; }
+@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 100 800; font-display: swap;
+  src: url(/fonts/jetbrains-mono-cyrillic-wght-normal.woff2) format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
+
+/* --- Shared scale --------------------------------------------------------- */
+
 :root {
-  /* Brand ramp ----------------------------------------------------------- */
-  --brand-300: #a5b4fc;
-  --brand-400: #818cf8;
-  --brand-500: #6366f1;
-  --brand-600: #4f46e5;
-  --violet-400: #c084fc;
-  --violet-500: #a855f7;
+  --font-body: 'Onest', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-serif: 'Literata', ui-serif, Georgia, 'Times New Roman', serif;
+  --font-wide: 'Unbounded', 'Onest', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Kept for older rules that still ask for the sans face by name. */
+  --font-sans: var(--font-body);
 
-  /* Semantic accents ----------------------------------------------------- */
-  --success: #22c55e;
-  --success-soft: rgba(34, 197, 94, 0.14);
-  --warning: #f59e0b;
-  --warning-soft: rgba(245, 158, 11, 0.14);
-  --danger: #f43f5e;
-  --danger-soft: rgba(244, 63, 94, 0.14);
-  --info: #38bdf8;
-  --info-soft: rgba(56, 189, 248, 0.14);
-
-  /* Type ----------------------------------------------------------------- */
-  --font-sans: 'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-               Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-
-  --text-xs: 0.6875rem;   /* 11px */
-  --text-sm: 0.8125rem;   /* 13px */
+  --text-xs: 0.75rem;     /* 12px */
+  --text-sm: 0.84375rem;  /* 13.5px */
   --text-base: 0.9375rem; /* 15px */
   --text-md: 1.0625rem;   /* 17px */
   --text-lg: 1.375rem;    /* 22px */
   --text-xl: 1.875rem;    /* 30px */
   --text-2xl: 2.5rem;     /* 40px */
-  --text-3xl: 3.25rem;    /* 52px */
+  --text-3xl: 3.5rem;     /* 56px */
 
   /* Space — a 4px scale keeps rhythm consistent across every view. */
   --s-1: 0.25rem;  --s-2: 0.5rem;   --s-3: 0.75rem;  --s-4: 1rem;
   --s-5: 1.25rem;  --s-6: 1.5rem;   --s-7: 2rem;     --s-8: 2.5rem;
   --s-9: 3rem;     --s-10: 4rem;
 
-  /* Shape ---------------------------------------------------------------- */
-  --r-sm: 8px;  --r-md: 12px;  --r-lg: 16px;  --r-xl: 22px;  --r-full: 999px;
+  --r-full: 999px;
 
-  /* Motion — short, eased, and honest about what moved. */
+  /* Motion — quick, eased, and honest about what moved. */
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --t-fast: 130ms;
   --t-base: 220ms;
-  --t-slow: 420ms;
+  --t-slow: 480ms;
 
-  --sidebar-w: 248px;
-  --header-h: 68px;
-  --content-max: 1180px;
+  --sidebar-w: 252px;
+  --header-h: 64px;
+  --content-max: 1160px;
+
+  /* Category hues. Routine colours pass through --tint (below) so a saturated
+     pick still sits in the theme instead of shouting over it. */
+  --cat-health: #2e7fb8;
+  --cat-fitness: #4f8f3a;
+  --cat-work: #4b4fb0;
+  --cat-study: #d0782a;
+  --cat-personal: #b3477a;
+  --cat-mindfulness: #7a4ba0;
+  --cat-social: #2f8a7c;
+  --cat-finance: #b8901f;
+  --cat-home: #c4492f;
+  --cat-other: #5c6670;
 }
 
-/* --- Dark (default) ------------------------------------------------------ */
+/* --- Daftar (light) --------------------------------------------------------- */
 :root,
-:root[data-theme='dark'] {
-  color-scheme: dark;
-
-  --bg: #0b0d14;
-  --bg-glow-1: rgba(99, 102, 241, 0.16);
-  --bg-glow-2: rgba(168, 85, 247, 0.11);
-
-  --surface: #12151f;
-  --surface-2: #171b28;
-  --surface-3: #1e2333;
-  --surface-hover: #1c2130;
-  --overlay: rgba(6, 8, 13, 0.72);
-
-  --line: rgba(255, 255, 255, 0.07);
-  --line-strong: rgba(255, 255, 255, 0.13);
-
-  --fg: #eef1f8;
-  --fg-muted: #a3acc2;
-  --fg-subtle: #6b7590;
-  --fg-inverse: #0b0d14;
-
-  --accent: var(--brand-400);
-  --accent-strong: var(--brand-500);
-  --accent-soft: rgba(129, 140, 248, 0.15);
-  --accent-ring: rgba(129, 140, 248, 0.42);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 24px 60px -18px rgba(0, 0, 0, 0.75);
-  --shadow-glow: 0 0 0 1px rgba(129, 140, 248, 0.18), 0 12px 40px -12px rgba(99, 102, 241, 0.5);
-}
-
-/* --- Light --------------------------------------------------------------- */
 :root[data-theme='light'] {
   color-scheme: light;
 
-  --bg: #f6f7fb;
-  --bg-glow-1: rgba(99, 102, 241, 0.13);
-  --bg-glow-2: rgba(168, 85, 247, 0.09);
+  --font-display: var(--font-serif);
+  --display-weight: 560;
+  --display-tracking: -0.015em;
+  --num-font: var(--font-mono);
 
-  --surface: #ffffff;
-  --surface-2: #fbfbfe;
-  --surface-3: #f1f2f8;
-  --surface-hover: #f4f5fa;
-  --overlay: rgba(20, 22, 34, 0.42);
+  --r-sm: 5px;  --r-md: 8px;  --r-lg: 12px;  --r-xl: 16px;
 
-  --line: rgba(17, 20, 38, 0.09);
-  --line-strong: rgba(17, 20, 38, 0.16);
+  --bg: #f2ece1;
+  --bg-pattern: radial-gradient(circle at 1px 1px, rgba(62, 48, 30, 0.13) 1px, transparent 1.2px) 0 0 / 22px 22px;
+  --surface: #fbf8f2;
+  --surface-2: #f6f1e7;
+  --surface-3: #ebe3d4;
+  --surface-hover: #f1eadd;
+  --overlay: rgba(42, 33, 22, 0.38);
 
-  --fg: #171a2b;
-  --fg-muted: #5a6379;
-  /* Measured, WCAG AA for small text (≥ 4.5:1): #8b93a7 read at only
-     2.75–3.07 on the light surfaces; this reads at 4.76–5.32. */
-  --fg-subtle: #636b81;
-  --fg-inverse: #ffffff;
+  --line: rgba(52, 40, 24, 0.13);
+  --line-strong: rgba(52, 40, 24, 0.24);
 
-  /* The shared 500-weight success/warning/danger are bright enough for text
-     on a dark ground but not on white: badge text measured 1.9–3.2:1 on its
-     own tinted background ("High" in amber was near invisible). The 700
-     shades read at 4.5–5.5:1 and still work as fills. */
-  --success: #15803d;
-  --warning: #b45309;
-  --danger: #be123c;
+  --fg: #1e1a14;
+  --fg-muted: #574e42;
+  --fg-subtle: #6e6455;   /* 4.9:1 on --surface */
+  --fg-inverse: #fbf8f2;
 
-  --accent: var(--brand-600);
-  --accent-strong: var(--brand-600);
-  --accent-soft: rgba(79, 70, 229, 0.1);
-  --accent-ring: rgba(79, 70, 229, 0.3);
+  --accent: #c63d22;          /* red pencil */
+  --accent-strong: #a8321b;
+  --accent-soft: rgba(198, 61, 34, 0.1);
+  --accent-ring: rgba(198, 61, 34, 0.28);
+  --on-accent: #fff8f1;
 
-  --success-soft: rgba(34, 197, 94, 0.12);
-  --warning-soft: rgba(245, 158, 11, 0.13);
-  --danger-soft: rgba(244, 63, 94, 0.1);
-  --info-soft: rgba(56, 189, 248, 0.13);
+  --success: #2f7a4b;
+  --success-soft: rgba(47, 122, 75, 0.12);
+  --warning: #a8620c;
+  --warning-soft: rgba(168, 98, 12, 0.12);
+  --danger: #b4231a;
+  --danger-soft: rgba(180, 35, 26, 0.1);
+  --info: #2e6da4;
+  --info-soft: rgba(46, 109, 164, 0.12);
 
-  --shadow-sm: 0 1px 2px rgba(19, 22, 41, 0.06);
-  --shadow-md: 0 10px 28px -12px rgba(19, 22, 41, 0.18);
-  --shadow-lg: 0 28px 64px -22px rgba(19, 22, 41, 0.28);
-  --shadow-glow: 0 0 0 1px rgba(79, 70, 229, 0.16), 0 14px 40px -16px rgba(79, 70, 229, 0.35);
+  --tint-base: #2a2016;
+  --tint-amount: 78%;
+
+  --shadow-sm: 0 1px 0 rgba(62, 48, 30, 0.06);
+  --shadow-md: 0 1px 0 rgba(62, 48, 30, 0.06), 0 10px 24px -14px rgba(62, 48, 30, 0.35);
+  --shadow-lg: 0 30px 70px -28px rgba(42, 33, 22, 0.45);
+  --shadow-glow: none;
 }
 
-/* Category hues, used by chips, charts and the calendar. */
+/* --- Tablo (dark) ----------------------------------------------------------- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --font-display: var(--font-wide);
+  --display-weight: 640;
+  --display-tracking: -0.02em;
+  --num-font: var(--font-mono);
+
+  --r-sm: 2px;  --r-md: 4px;  --r-lg: 6px;  --r-xl: 8px;
+
+  --bg: #0c0c0a;
+  --bg-pattern: linear-gradient(rgba(242, 240, 232, 0.025) 1px, transparent 1px) 0 0 / 100% 56px;
+  --surface: #141412;
+  --surface-2: #1b1b18;
+  --surface-3: #26261f;
+  --surface-hover: #20201c;
+  --overlay: rgba(0, 0, 0, 0.7);
+
+  --line: rgba(242, 240, 232, 0.09);
+  --line-strong: rgba(242, 240, 232, 0.2);
+
+  --fg: #f2f0e8;
+  --fg-muted: #b4b1a5;
+  --fg-subtle: #8a877c;
+  --fg-inverse: #0c0c0a;
+
+  --accent: #d4ff3a;          /* scoreboard lime */
+  --accent-strong: #c2ee24;
+  --accent-soft: rgba(212, 255, 58, 0.12);
+  --accent-ring: rgba(212, 255, 58, 0.35);
+  --on-accent: #0c0c0a;
+
+  --success: #d4ff3a;
+  --success-soft: rgba(212, 255, 58, 0.12);
+  --warning: #ffb02e;
+  --warning-soft: rgba(255, 176, 46, 0.13);
+  --danger: #ff5a36;
+  --danger-soft: rgba(255, 90, 54, 0.14);
+  --info: #5ec8ff;
+  --info-soft: rgba(94, 200, 255, 0.13);
+
+  --tint-base: #f2f0e8;
+  --tint-amount: 82%;
+
+  --shadow-sm: none;
+  --shadow-md: 0 0 0 1px var(--line-strong);
+  --shadow-lg: 0 0 0 1px var(--line-strong), 0 30px 80px -20px rgba(0, 0, 0, 0.9);
+  --shadow-glow: none;
+}
+
+/* --- Siyoh (ink) ------------------------------------------------------------ */
+:root[data-theme='ink'] {
+  color-scheme: dark;
+
+  --font-display: var(--font-serif);
+  --display-weight: 520;
+  --display-tracking: -0.01em;
+  --num-font: var(--font-mono);
+
+  --r-sm: 6px;  --r-md: 10px;  --r-lg: 14px;  --r-xl: 20px;
+
+  --bg: #0f1420;
+  --bg-pattern: radial-gradient(circle at 1px 1px, rgba(233, 228, 216, 0.05) 1px, transparent 1.2px) 0 0 / 24px 24px;
+  --surface: #151b29;
+  --surface-2: #1a2131;
+  --surface-3: #242c3f;
+  --surface-hover: #1e2637;
+  --overlay: rgba(6, 9, 15, 0.72);
+
+  --line: rgba(233, 228, 216, 0.08);
+  --line-strong: rgba(233, 228, 216, 0.17);
+
+  --fg: #ece6d8;
+  --fg-muted: #b3ad9f;
+  --fg-subtle: #8c8778;
+  --fg-inverse: #0f1420;
+
+  --accent: #e3ad52;          /* brass nib */
+  --accent-strong: #d29a3c;
+  --accent-soft: rgba(227, 173, 82, 0.13);
+  --accent-ring: rgba(227, 173, 82, 0.35);
+  --on-accent: #1a1408;
+
+  --success: #79c495;
+  --success-soft: rgba(121, 196, 149, 0.13);
+  --warning: #e3ad52;
+  --warning-soft: rgba(227, 173, 82, 0.13);
+  --danger: #f07562;
+  --danger-soft: rgba(240, 117, 98, 0.14);
+  --info: #7fb4e8;
+  --info-soft: rgba(127, 180, 232, 0.13);
+
+  --tint-base: #ece6d8;
+  --tint-amount: 80%;
+
+  --shadow-sm: 0 1px 0 rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 14px 34px -18px rgba(0, 0, 0, 0.8);
+  --shadow-lg: 0 34px 80px -26px rgba(0, 0, 0, 0.9);
+  --shadow-glow: none;
+}
+
+/* Legacy names some rules and charts still reference. They now resolve to the
+   theme's own accent, so nothing anywhere draws the old indigo/violet. */
 :root {
-  --cat-health: #0ea5e9;
-  --cat-fitness: #22c55e;
-  --cat-work: #6366f1;
-  --cat-study: #f97316;
-  --cat-personal: #ec4899;
-  --cat-mindfulness: #a855f7;
-  --cat-social: #14b8a6;
-  --cat-finance: #eab308;
-  --cat-home: #f43f5e;
-  --cat-other: #64748b;
+  --brand-300: var(--accent);
+  --brand-400: var(--accent);
+  --brand-500: var(--accent);
+  --brand-600: var(--accent-strong);
+  --violet-400: var(--accent);
+  --violet-500: var(--accent-strong);
 }

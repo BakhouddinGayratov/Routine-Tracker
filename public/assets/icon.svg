@@ -1,13 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#818cf8"/>
-      <stop offset="1" stop-color="#c084fc"/>
-    </linearGradient>
-  </defs>
-  <g id="mark">
-    <rect x="2" y="2" width="44" height="44" rx="13" fill="url(#g)"/>
-    <path d="M14 24.5l6.5 6.5L34 17.5" fill="none" stroke="#0b0d14" stroke-width="4.2"
-          stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" color="#f2ece1">
+  <!-- The tile only shows where this file is the favicon. Pages that <use>
+       #mark get just the dial, drawn in currentColor, so it takes the theme. -->
+  <rect width="48" height="48" rx="11" fill="#1e1a14"/>
+  <g id="mark" fill="none" stroke="currentColor" stroke-linecap="round">
+    <!-- A day as a dial: the faint ring is the 24 hours, the bold arc the part
+         already lived well, the hand where you are now. -->
+    <circle cx="24" cy="24" r="15" stroke-width="3" opacity="0.3"/>
+    <path d="M24 9 A15 15 0 0 1 36.99 31.5" stroke-width="3.6"/>
+    <path d="M24 24 L31.8 28.5" stroke-width="3"/>
+    <circle cx="24" cy="24" r="2.6" fill="currentColor" stroke="none"/>
   </g>
 </svg>

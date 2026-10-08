@@ -2,7 +2,7 @@ import { el, mount } from '../dom.js';
 import { icon } from '../icons.js';
 import { t, LOCALES } from '../i18n.js';
 import { api, ApiError } from '../api.js';
-import { state, updateProfile, signOut } from '../store.js';
+import { state, updateProfile, signOut, THEMES } from '../store.js';
 import { toast, confirmDialog, modal, emptyState } from '../ui.js';
 import { COLOR_CHOICES, EMOJI_CHOICES, CATEGORY_COLORS, initials, formatDate } from '../utils.js';
 import { requestNotificationPermission, notificationState } from '../reminders.js';
@@ -166,21 +166,23 @@ export function renderSettings(container, { navigate }) {
   const appearanceCard = () => el('section', { class: 'card', style: { 'margin-bottom': 'var(--s-4)' } },
     el('div', { class: 'card__head' }, el('div', { class: 'card__title' }, t('settings.appearance'))),
 
-    el('div', { class: 'settings-row' },
-      el('div', { class: 'settings-row__text' },
-        el('div', { class: 'settings-row__title' }, t('settings.theme')),
-      ),
-      el('div', { class: 'settings-row__control', style: { width: '220px' } },
-        el('div', { class: 'theme-preview' },
-          ...['dark', 'light'].map((theme) => el('button', {
-            type: 'button',
-            class: ['theme-option', user.theme === theme && 'is-on'],
-            onclick: () => patch({ theme }, { silent: true }).then(render),
-          },
-            el('div', { class: `theme-option__swatch theme-option__swatch--${theme}` }),
-            el('div', { class: 'theme-option__name' }, t(`settings.theme${theme[0].toUpperCase()}${theme.slice(1)}`)),
-          )),
-        ),
+    // Each look previewed in its own paper, ink and type, whatever the
+    // current one is — choosing a theme is choosing how the app feels.
+    el('div', { class: 'col', style: { gap: 'var(--s-3)', padding: 'var(--s-2) 0 var(--s-4)', 'border-bottom': '1px solid var(--line)' } },
+      el('div', { class: 'settings-row__title' }, t('settings.theme')),
+      el('div', { class: 'theme-cards' },
+        ...THEMES.map((theme) => el('button', {
+          type: 'button',
+          class: ['theme-card', `theme-card--${theme}`, user.theme === theme && 'is-on'],
+          'aria-pressed': String(user.theme === theme),
+          onclick: () => patch({ theme }, { silent: true }).then(render),
+        },
+          el('span', { class: 'theme-card__sample', 'aria-hidden': 'true' },
+            el('b', null, t(`theme.${theme}.sample`)), el('i'), el('u'), el('em'),
+          ),
+          el('span', { class: 'theme-card__name' }, t(`theme.${theme}`)),
+          el('span', { class: 'theme-card__desc' }, t(`theme.${theme}.desc`)),
+        )),
       ),
     ),
 
@@ -450,7 +452,7 @@ export function renderSettings(container, { navigate }) {
         el('div', { class: 'picker-grid' },
           ...COLOR_CHOICES.map((color) => el('button', {
             type: 'button',
-            class: ['swatch', color === (current.color || '#6366f1') && 'is-on'],
+            class: ['swatch', color === (current.color || '#4b4fb0') && 'is-on'],
             style: { background: color },
             'aria-label': color,
             onclick: () => save('color', color),

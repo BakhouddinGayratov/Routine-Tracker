@@ -250,7 +250,7 @@ export function openGoalForm(goal, { onSaved } = {}) {
     title: goal?.title || '',
     description: goal?.description || '',
     icon: goal?.icon || '🎯',
-    color: goal?.color || '#6366f1',
+    color: goal?.color || '#4b4fb0',
     target_date: goal?.target_date || '',
     status: goal?.status || 'active',
   };

@@ -3,7 +3,8 @@ import { icon } from '../icons.js';
 import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state, invalidateRoutines, refreshSummary } from '../store.js';
-import { toast, emptyState, skeletonList, progressRing, celebrate, confirmDialog, choiceDialog } from '../ui.js';
+import { toast, emptyState, skeletonList, celebrate, confirmDialog, choiceDialog, countUp } from '../ui.js';
+import { dayDial } from '../dial.js';
 import { openRoutineForm, repeatLabel } from './routine-form.js';
 import {
   todayISO, addDays, formatDate, relativeDay, formatDuration, nowTime,
@@ -11,15 +12,30 @@ import {
 } from '../utils.js';
 
 const BUCKET_ORDER = ['morning', 'afternoon', 'evening', 'night', 'anytime'];
+const VIEW_KEY = 'rt.dayView';
+
+/** The person's last choice between the hour grid and the list. */
+function readView() {
+  try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+}
 
 /**
- * The day view: a timeline of everything scheduled, with the progress ring,
- * week strip and one-tap completion.
+ * The day view: the day drawn as a dial, what is happening right now, the
+ * week, and the routines themselves — either as an hour grid (each block as
+ * tall as it lasts) or as a list grouped by part of the day.
  */
 export function renderToday(container, { date, navigate }) {
   const selected = date || todayISO();
   let data = null;
   let week = null;
+  let view = readView();
+  // Draw the dial's arcs in only on the first paint, not on every tick.
+  let intro = true;
+  // The routine whose status just changed: only it plays its animation.
+  let freshId = null;
+  // The hour grid's minutes → pixels scale (it folds empty hours), kept so
+  // the minute tick can move the "now" line without redrawing the grid.
+  let gridY = () => 0;
   // Secondary data: tomorrow's routines (for "Up next" once today is clear),
   // goal names (day summary), this day's journal entry (the one-line note),
   // and, on an empty day only, whether the account has any routine at all
@@ -66,10 +82,12 @@ export function renderToday(container, { date, navigate }) {
   /** Optimistic toggle: paint the new state immediately, reconcile after. */
   const setStatus = async (item, status, value) => {
     const previous = { status: item.status, value: item.value };
+    freshId = item.id;
     item.status = status === 'pending' ? 'pending' : status;
     item.value = value ?? (status === 'done' ? (item.goal_type === 'quantity' ? item.target_value : 1) : 0);
     updateSummary();
     render();
+    const optimistic = { status: item.status, value: item.value };
 
     try {
       const result = await api.log({
@@ -80,16 +98,22 @@ export function renderToday(container, { date, navigate }) {
       });
       item.status = result.status === 'pending' ? 'pending' : result.log?.status || result.status;
       item.value = result.log?.value ?? 0;
+      // The usual case: the server agreed with what is already on screen.
+      // Redrawing the list then would restart the tick's animation mid-way,
+      // so only the hero (its dial and counts) is refreshed.
+      const agreed = item.status === optimistic.status && Number(item.value) === Number(optimistic.value);
 
       if (item.status === 'done' && previous.status !== 'done') {
         const remaining = data.items.filter((i) => i.status === 'pending').length;
         if (remaining === 0 && data.items.length > 1) {
-          celebrate();
+          const done = data.items.filter((i) => i.status === 'done').length;
+          celebrate({ big: t('celebrate.dayClosed'), small: `${done}/${data.items.length}` });
           toast(t('today.perfect'), 'success');
         }
       }
       updateSummary();
-      render();
+      if (agreed) container.querySelector('.hero-card')?.replaceWith(heroCard());
+      else render();
       refreshSummary();   // keeps the sidebar's remaining-count honest
     } catch (err) {
       Object.assign(item, previous);
@@ -189,7 +213,22 @@ export function renderToday(container, { date, navigate }) {
       weekStrip(),
       timeline(),
     ));
+    intro = false;
+    // The fresh mark lasts one paint; later re-renders must not replay it.
+    if (freshId !== null) { const id = freshId; setTimeout(() => { if (freshId === id) freshId = null; }, 900); }
   };
+
+  // While today is on screen, the hand, the "now" line and the live strip
+  // move with the clock. Only the hero and the grid's now-line are redrawn,
+  // and only while nothing is being typed into.
+  const tick = setInterval(() => {
+    if (!container.isConnected) { clearInterval(tick); return; }
+    if (!data || selected !== data.today || document.querySelector('.modal')) return;
+    if (container.contains(document.activeElement) && document.activeElement.matches('input, textarea')) return;
+    container.querySelector('.hero-card')?.replaceWith(heroCard());
+    const now = container.querySelector('.hours__now');
+    if (now) now.replaceWith(hoursNow());
+  }, 30_000);
 
   // --- Hero ---------------------------------------------------------------
 
@@ -197,16 +236,29 @@ export function renderToday(container, { date, navigate }) {
     const { summary, streak } = data;
     const isToday = selected === data.today;
     const rate = summary.rate ?? 0;
+    const small = compact();
+
+    // The day's percentage in the dial's centre, counted up on first paint.
+    const value = el('span');
+    if (summary.total && intro) countUp(value, pct(rate));
+    else value.textContent = summary.total ? String(pct(rate)) : '—';
+    const center = el('div', null,
+      el('div', { class: 'dial-wrap__value' }, value, summary.total ? el('small', null, '%') : null),
+      el('div', { class: 'dial-wrap__sub' }, summary.total ? `${summary.done}/${summary.total}` : t('today.nothing')),
+    );
+    const dial = dayDial(data.items, { size: small ? 100 : 208, now: isToday ? nowTime() : null, center, intro, labels: !small });
+    if (small) dial.classList.add('dial-wrap--sm');
 
     return el('section', { class: 'hero-card' },
       el('div', { class: 'hero-card__body' },
-        el('div', { class: 'row row--wrap', style: { gap: 'var(--s-2) var(--s-3)' } },
-          el('h1', { class: 'hero-card__greeting' }, isToday ? greeting() : relativeDay(selected, t, state.user.locale)),
-          streak.current > 0
-            ? el('span', { class: 'streak-pill' }, icon('flame', { size: 15 }), t('today.streak', { count: streak.current }))
-            : null,
-        ),
-        el('div', { class: 'hero-card__date' }, formatDate(selected, { long: true, locale: state.user.locale })),
+        el('p', { class: 'hero-card__greeting' }, isToday ? greeting() : relativeDay(selected, t, state.user.locale)),
+        // A non-breaking hyphen: "9-oktabr" must never split as "9-" / "oktabr".
+        el('h1', { class: 'hero-card__date' },
+          formatDate(selected, { long: true, locale: state.user.locale }).replace(/(\d)-/g, '$1‑')),
+        streak.current > 0
+          ? el('div', { class: 'hero-card__meta' },
+              el('span', { class: 'streak-pill' }, icon('flame', { size: 13 }), t('today.streak', { count: streak.current })))
+          : null,
 
         summary.total > 0 && summary.pending === 0
           ? daySummary()
@@ -251,7 +303,7 @@ export function renderToday(container, { date, navigate }) {
                   if (!ok) return;
                   button.setAttribute('aria-busy', 'true');
                   await api.completeAll(selected);
-                  celebrate();
+                  celebrate({ big: t('celebrate.dayClosed'), small: `${summary.total}/${summary.total}` });
                   toast(t('toast.allComplete'));
                   await load();
                 },
@@ -269,17 +321,9 @@ export function renderToday(container, { date, navigate }) {
         ),
       ),
 
-      // On a phone the big ring filled the first screen and pushed the list
-      // below the fold; a small one beside the text leaves room for it.
-      progressRing(rate, compact()
-        ? { size: 72, stroke: 7, label: summary.total ? `${pct(rate)}%` : '—', color: rate >= 100 ? '#22c55e' : undefined }
-        : {
-            size: 132,
-            stroke: 11,
-            label: summary.total ? `${pct(rate)}%` : '—',
-            sublabel: summary.total ? `${summary.done}/${summary.total}` : t('today.nothing'),
-            color: rate >= 100 ? '#22c55e' : undefined,
-          }),
+      // The day as a dial. On a phone a small one sits beside the text, so the
+      // routines still start on the first screen.
+      dial,
     );
   };
 
@@ -315,18 +359,33 @@ export function renderToday(container, { date, navigate }) {
     return first ? { item: first, when: 'tomorrow', date: tomorrow } : null;
   };
 
+  /**
+   * The live strip. While something is running it says so, shows how much of
+   * the block has passed and counts the minutes left; otherwise it names the
+   * next routine and how soon it starts. The minute tick redraws it.
+   */
   const upNext = () => {
     const next = nextUp();
     if (!next) return null;
     const { item } = next;
-    const when = next.when === 'now'
-      ? t('today.nowRunning')
-      : next.when === 'tomorrow'
-        ? `${t('date.tomorrow')} ${item.start_time}`
-        : `${item.start_time} · ${inTime(next.minutes)}`;
+    const running = next.when === 'now';
+
+    let when;
+    let progress = null;
+    if (running) {
+      const now = toMinutes(nowTime());
+      const start = toMinutes(item.start_time);
+      const length = item.duration_min || 1;
+      progress = Math.min(100, Math.max(0, ((now - start) / length) * 100));
+      when = t('today.minutesLeft', { count: Math.max(1, start + length - now) });
+    } else if (next.when === 'tomorrow') {
+      when = `${t('date.tomorrow')} ${item.start_time}`;
+    } else {
+      when = `${item.start_time} · ${inTime(next.minutes)}`;
+    }
 
     return el('button', {
-      class: 'up-next',
+      class: ['up-next live', running && 'is-running'],
       type: 'button',
       onclick: () => {
         if (next.when === 'tomorrow') { navigate(`/day/${next.date}`); return; }
@@ -336,10 +395,10 @@ export function renderToday(container, { date, navigate }) {
         setTimeout(() => row?.classList.remove('is-flash'), 1200);
       },
     },
-      el('span', { class: 'up-next__label' }, t('today.upNext')),
-      el('span', { class: 'up-next__icon', 'aria-hidden': 'true' }, item.icon),
-      el('span', { class: 'up-next__title truncate' }, item.title),
-      el('span', { class: 'up-next__when' }, when),
+      el('span', { class: 'live__label' }, running ? t('today.now') : t('today.upNext')),
+      el('span', { class: 'live__title' }, `${item.icon} ${item.title}`),
+      el('span', { class: 'live__when' }, when),
+      running ? el('span', { class: 'live__bar' }, el('i', { style: { width: `${progress}%` } })) : null,
     );
   };
 
@@ -509,19 +568,24 @@ export function renderToday(container, { date, navigate }) {
         },
           el('span', { class: 'weekstrip__dow' }, weekdayName(weekdayOf(day.date), state.user.locale)),
           el('span', { class: 'weekstrip__num' }, Number(day.date.slice(8, 10))),
-          el('span', { class: 'weekstrip__dots' },
-            ...dotsFor(day).map((on) => el('i', { class: on ? 'is-on' : '' })),
-          ),
+          dayBar(day),
         )),
       ),
     );
   };
 
-  /** Up to four dots showing how much of that day was completed. */
-  const dotsFor = (day) => {
-    if (!day.due) return [];
-    const filled = Math.round((day.rate / 100) * 4);
-    return Array.from({ length: 4 }, (_, i) => i < filled);
+  /**
+   * The day's split as one bar: done, then ✗, then what is still open, each
+   * at its real share. Four dots rounded "7 of 9" and "8 of 9" to the same
+   * picture and could not show a failure at all.
+   */
+  const dayBar = (day) => {
+    if (!day.due) return el('span', { class: 'weekstrip__bar', style: { opacity: '0.35' } });
+    const share = (n) => `${Math.max(0, Math.min(100, (n / day.due) * 100))}%`;
+    return el('span', { class: 'weekstrip__bar', title: `${day.done}/${day.due}` },
+      el('i', { class: 'is-done', style: { width: share(day.done) } }),
+      day.skipped ? el('i', { class: 'is-missed', style: { width: share(day.skipped) } }) : null,
+    );
   };
 
   // --- Timeline ------------------------------------------------------------
@@ -548,6 +612,35 @@ export function renderToday(container, { date, navigate }) {
       }));
     }
 
+    const hasTimed = data.items.some((i) => i.start_time);
+    const showGrid = view === 'grid' && hasTimed;
+
+    return el('section', null,
+      el('div', { class: 'day-head' },
+        el('h2', { class: 'section__title' }, t('today.plan')),
+        hasTimed ? viewSwitch() : null,
+      ),
+      showGrid ? hourGrid() : listView(),
+    );
+  };
+
+  /** Grid ↔ list, remembered on this device. */
+  const viewSwitch = () => el('div', { class: 'segmented', role: 'group', 'aria-label': t('today.plan') },
+    ...[['grid', 'calendar', t('today.viewGrid')], ['list', 'list', t('today.viewList')]].map(([key, glyph, label]) =>
+      el('button', {
+        type: 'button',
+        class: ['segmented__item', view === key && 'is-active'],
+        'aria-pressed': String(view === key),
+        onclick: () => {
+          if (view === key) return;
+          view = key;
+          try { localStorage.setItem(VIEW_KEY, key); } catch { /* per-device nicety only */ }
+          render();
+        },
+      }, icon(glyph, { size: 14 }), label)),
+  );
+
+  const listView = () => {
     const groups = new Map(BUCKET_ORDER.map((b) => [b, []]));
     for (const item of data.items) groups.get(timeBucket(item.start_time)).push(item);
 
@@ -555,7 +648,7 @@ export function renderToday(container, { date, navigate }) {
     const showNowLine = selected === data.today;
     let nowPlaced = false;
 
-    return el('section', { class: 'timeline' },
+    return el('div', { class: 'timeline' },
       ...BUCKET_ORDER.flatMap((bucket) => {
         const items = groups.get(bucket);
         if (!items.length) return [];
@@ -573,6 +666,196 @@ export function renderToday(container, { date, navigate }) {
     );
   };
 
+  // --- Hour grid -------------------------------------------------------------
+
+  /**
+   * The day as a calendar column: an hour rail on the left, each routine a
+   * block as tall as it lasts, at the height of its start. Routines that
+   * overlap share the width side by side. Routines without a time sit in a
+   * short list above the grid. The visible range is the day's first to last
+   * routine with an hour of air either side (and now, if today).
+   */
+  const hourGrid = () => {
+    const timed = data.items.filter((i) => i.start_time).map((item) => {
+      const start = toMinutes(item.start_time);
+      return { item, start, end: start + Math.max(item.duration_min || 0, 0) };
+    }).sort((a, b) => a.start - b.start || b.end - a.end);
+    const anytime = data.items.filter((i) => !i.start_time);
+
+    const isToday = selected === data.today;
+    const nowMin = toMinutes(nowTime());
+    let first = Math.min(...timed.map((b) => b.start));
+    let last = Math.max(...timed.map((b) => Math.max(b.end, b.start + 30)));
+    if (isToday) { first = Math.min(first, nowMin); last = Math.max(last, nowMin); }
+    const fromHour = Math.max(0, Math.floor(first / 60) - 1);
+    const toHour = Math.min(24, Math.ceil(last / 60) + 1);
+    const PPM = compact() ? 1.05 : 1.15;
+    // A block is never shorter than a comfortable tap target.
+    const MIN_PX = 34;
+
+    // Overlap clusters, then greedy columns within each cluster.
+    const visualEnd = (b) => b.start + Math.max(b.end - b.start, MIN_PX / PPM);
+    const clusters = [];
+    for (const block of timed) {
+      const current = clusters[clusters.length - 1];
+      if (current && block.start < current.end) {
+        current.blocks.push(block);
+        current.end = Math.max(current.end, visualEnd(block));
+      } else {
+        clusters.push({ blocks: [block], end: visualEnd(block) });
+      }
+    }
+    for (const cluster of clusters) {
+      const columns = [];
+      for (const block of cluster.blocks) {
+        let index = columns.findIndex((end) => end <= block.start);
+        if (index === -1) { index = columns.length; columns.push(0); }
+        columns[index] = visualEnd(block);
+        block.column = index;
+      }
+      for (const block of cluster.blocks) block.columns = columns.length;
+    }
+
+    // Long empty stretches fold into one short band ("10:00–14:00 · free"),
+    // the way a good calendar does, so a day with a busy morning and a busy
+    // evening is not mostly empty grid. An hour is busy if a block (at its
+    // drawn height) or the "now" line falls in it.
+    const busy = new Set();
+    for (const block of timed) {
+      for (let h = Math.floor(block.start / 60); h <= Math.floor((visualEnd(block) - 1) / 60); h += 1) busy.add(h);
+    }
+    if (isToday) busy.add(Math.floor(nowMin / 60));
+
+    const segments = [];
+    for (let hour = fromHour; hour < toHour;) {
+      let end = hour;
+      while (end < toHour && !busy.has(end)) end += 1;
+      if (end - hour >= 2) {
+        segments.push({ from: hour, to: end, folded: true });
+        hour = end;
+      } else {
+        segments.push({ from: hour, to: hour + 1, folded: false });
+        hour += 1;
+      }
+    }
+    const FOLD_PX = 30;
+    // Minutes since midnight → pixels from the grid's top, across the folds.
+    const y = (minute) => {
+      let offset = 0;
+      for (const segment of segments) {
+        const start = segment.from * 60;
+        const end = segment.to * 60;
+        if (minute < end || segment === segments[segments.length - 1]) {
+          return offset + (segment.folded ? 0 : (Math.max(minute, start) - start) * PPM);
+        }
+        offset += segment.folded ? FOLD_PX : (end - start) * PPM;
+      }
+      return offset;
+    };
+    gridY = y;
+    const total = segments.reduce((sum, s) => sum + (s.folded ? FOLD_PX : (s.to - s.from) * 60 * PPM), 0);
+    const hh = (hour) => `${String(hour % 24).padStart(2, '0')}:00`;
+
+    const rows = segments.map((segment) => (segment.folded
+      ? el('div', { class: 'hours__row hours__row--fold', style: { top: `${y(segment.from * 60)}px`, height: `${FOLD_PX}px` } },
+          el('span', { class: 'hours__label' }, hh(segment.from)),
+          el('span', { class: 'hours__fold' }, `${hh(segment.from)}–${hh(segment.to)} · ${t('today.free')}`))
+      : el('div', { class: 'hours__row', style: { top: `${y(segment.from * 60)}px` } },
+          el('span', { class: 'hours__label' }, hh(segment.from)))));
+
+    const blocks = timed.map((block) => {
+      const top = y(block.start);
+      const height = Math.max((block.end - block.start) * PPM, MIN_PX) - 3;
+      const width = 100 / block.columns;
+      return hourBlock(block.item, {
+        top: `${top + 1}px`,
+        height: `${height}px`,
+        left: `calc(${block.column * width}% + 2px)`,
+        width: `calc(${width}% - 4px)`,
+      }, height < 46);
+    });
+
+    return el('div', null,
+      anytime.length
+        ? el('div', { class: 'anytime' },
+            el('div', { class: 'anytime__label' }, t('part.anytime')),
+            ...anytime.map(routineRow))
+        : null,
+      el('div', { class: 'hours', style: { height: `${total}px`, '--ppm': `${PPM}px` } },
+        ...rows,
+        el('div', { class: 'hours__lane' }, ...blocks),
+        isToday ? hoursNow() : null,
+      ),
+    );
+  };
+
+  /** The red "now" line across the grid, placed through the grid's own scale. */
+  const hoursNow = () => {
+    const now = nowTime();
+    return el('div', { class: 'hours__now', style: { top: `${gridY(toMinutes(now))}px` } }, el('span', null, now));
+  };
+
+  /** One routine in the grid. Its check works in place; the rest opens a menu. */
+  const hourBlock = (item, position, short) => {
+    const isDone = item.status === 'done';
+    const isSkipped = item.status === 'skipped';
+    const end = item.duration_min ? clock(toMinutes(item.start_time) + item.duration_min) : null;
+
+    return el('div', {
+      class: ['tl-block', isDone && 'is-done', isSkipped && 'is-skipped', short && 'is-short', item.id === freshId && 'is-fresh'],
+      style: { ...position, '--routine-color': item.color },
+      dataset: { routine: String(item.id) },
+      role: 'button',
+      tabindex: '0',
+      'aria-label': `${item.title}, ${item.start_time}${end ? `–${end}` : ''}`,
+      onclick: () => blockMenu(item),
+      onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); blockMenu(item); } },
+    },
+      el('button', {
+        class: ['check', isDone && 'is-done', isSkipped && 'is-skipped'],
+        type: 'button',
+        'aria-pressed': String(isDone),
+        'aria-label': `${isDone ? t('action.undo') : t('action.confirm')}: ${item.title}`,
+        onclick: (e) => { e.stopPropagation(); setStatus(item, isDone ? 'pending' : 'done'); },
+      }, icon(isSkipped ? 'x' : 'check', { size: 12, stroke: 3.2 })),
+      el('div', { class: 'tl-block__body' },
+        el('div', { class: 'tl-block__title' }, `${item.icon} ${item.title}`),
+        el('div', { class: 'tl-block__time' }, end ? `${item.start_time}–${end}` : item.start_time),
+      ),
+    );
+  };
+
+  /** Everything else a block can do, as one menu — a block is too small for a toolbar. */
+  const blockMenu = async (item) => {
+    const isDone = item.status === 'done';
+    const isSkipped = item.status === 'skipped';
+    const choices = [
+      { value: 'done', label: isDone ? t('action.undo') : `✓ ${t('action.markDone')}` },
+      isDone ? null : { value: 'missed', label: isSkipped ? t('action.undoMissed') : `✗ ${t('action.markMissed')}`, danger: !isSkipped },
+      isDone ? null : { value: 'postpone', label: t('action.postpone') },
+      { value: 'edit', label: t('action.edit'), hint: t('form.editDayOnlyShort') },
+      { value: 'delete', label: t('action.delete'), danger: true },
+    ].filter(Boolean);
+
+    const choice = await choiceDialog({
+      title: `${item.icon} ${item.title}`,
+      message: item.duration_min
+        ? `${item.start_time}–${clock(toMinutes(item.start_time) + item.duration_min)} · ${repeatLabel(item)}`
+        : `${item.start_time} · ${repeatLabel(item)}`,
+      choices,
+    });
+    if (choice === 'done') setStatus(item, isDone ? 'pending' : 'done');
+    else if (choice === 'missed') setStatus(item, isSkipped ? 'pending' : 'skipped');
+    else if (choice === 'postpone') postpone(item);
+    else if (choice === 'edit') {
+      openRoutineForm(item, {
+        weekStart: state.user.week_start,
+        day: selected,
+        onSaved: () => { invalidateRoutines(); load(); },
+      });
+    } else if (choice === 'delete') removeRoutine(item);
+  };
+
   const nowLine = (time) => el('div', { class: 'now-line' },
     el('span', { class: 'now-line__dot' }),
     el('span', { class: 'now-line__text' }, `${t('today.now')} · ${time}`),
@@ -586,7 +869,7 @@ export function renderToday(container, { date, navigate }) {
       && item.start_time && item.start_time < nowTime();
 
     return el('article', {
-      class: ['routine', isDone && 'is-done', isSkipped && 'is-skipped', overdue && 'is-overdue'],
+      class: ['routine', isDone && 'is-done', isSkipped && 'is-skipped', overdue && 'is-overdue', item.id === freshId && 'is-fresh'],
       style: { '--routine-color': item.color },
       dataset: { routine: String(item.id) },
     },
@@ -681,4 +964,10 @@ function greeting() {
 function toMinutes(time) {
   const [h, m] = time.split(':').map(Number);
   return h * 60 + m;
+}
+
+/** "HH:MM" for minutes since midnight, wrapping past midnight. */
+function clock(minutes) {
+  const m = ((minutes % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 }

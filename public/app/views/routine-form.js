@@ -43,7 +43,7 @@ export function openRoutineForm(routine, { weekStart = 1, date, goalId = null, d
     goal_id: routine?.goal_id ?? goalId,
     notes: routine?.notes || '',
     icon: routine?.icon || preset.icon || '✅',
-    color: routine?.color || preset.color || '#6366f1',
+    color: routine?.color || preset.color || '#4b4fb0',
     category: routine?.category || preset.category || 'personal',
     priority: routine?.priority || preset.priority || 'normal',
     start_time: routine?.start_time || '',

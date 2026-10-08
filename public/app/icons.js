@@ -66,3 +66,20 @@ export function icon(name, { size = 18, stroke = 2, class: cls = '' } = {}) {
     'aria-hidden': 'true',
   }, ...paths.split(' M').map((d, i) => el('path', { d: i === 0 ? d : `M${d}` })));
 }
+
+/**
+ * The brand mark: a day drawn as a dial — the faint ring is the 24 hours, the
+ * bold arc the part already lived well, the hand where you are now. Drawn in
+ * currentColor so every theme colours it (the same shape as assets/icon.svg).
+ */
+export function brandMark(size = 28) {
+  return el('svg', {
+    class: 'brand-mark', width: size, height: size, viewBox: '0 0 48 48',
+    fill: 'none', stroke: 'currentColor', 'stroke-linecap': 'round', 'aria-hidden': 'true',
+  },
+    el('circle', { cx: 24, cy: 24, r: 15, 'stroke-width': 3, opacity: 0.3 }),
+    el('path', { class: 'brand-mark__arc', d: 'M24 9 A15 15 0 0 1 36.99 31.5', 'stroke-width': 3.6 }),
+    el('path', { d: 'M24 24 L31.8 28.5', 'stroke-width': 3 }),
+    el('circle', { cx: 24, cy: 24, r: 2.6, fill: 'currentColor', stroke: 'none' }),
+  );
+}

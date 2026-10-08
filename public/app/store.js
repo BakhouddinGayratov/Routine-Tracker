@@ -29,13 +29,18 @@ export function notify() {
   for (const fn of listeners) fn(state);
 }
 
+/** The three looks, in the order the header button cycles through them. */
+export const THEMES = ['light', 'dark', 'ink'];
+// The browser's own bar takes each theme's page colour.
+const THEME_COLOR = { light: '#f2ece1', dark: '#0c0c0a', ink: '#0f1420' };
+
 /** Apply the user's theme + language to the document and to state. */
 export function applyUserPreferences(user) {
-  const theme = user?.theme || readStoredTheme() || 'dark';
+  const stored = user?.theme || readStoredTheme() || 'light';
+  const theme = THEMES.includes(stored) ? stored : 'light';
   state.theme = theme;
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', theme === 'light' ? '#f6f7fb' : '#0b0d14');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[theme]);
   try { localStorage.setItem('rt.theme', theme); } catch { /* ignore */ }
   setLocale(user?.locale || readStoredLocale() || 'en');
 }

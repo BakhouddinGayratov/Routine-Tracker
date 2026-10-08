@@ -156,10 +156,12 @@ export function passwordScore(value) {
   return clamp(Math.round(score), 0, 4);
 }
 
+// Pigments rather than screen primaries: they read as ink on the paper theme
+// and still hold up on the dark ones (each passes through the theme's --tint).
 export const CATEGORY_COLORS = {
-  health: '#0ea5e9', fitness: '#22c55e', work: '#6366f1', study: '#f97316',
-  personal: '#ec4899', mindfulness: '#a855f7', social: '#14b8a6',
-  finance: '#eab308', home: '#f43f5e', other: '#64748b',
+  health: '#2e7fb8', fitness: '#4f8f3a', work: '#4b4fb0', study: '#d0782a',
+  personal: '#b3477a', mindfulness: '#7a4ba0', social: '#2f8a7c',
+  finance: '#b8901f', home: '#c4492f', other: '#5c6670',
 };
 
 export const EMOJI_CHOICES = [
@@ -169,6 +171,6 @@ export const EMOJI_CHOICES = [
 ];
 
 export const COLOR_CHOICES = [
-  '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#f43f5e', '#f97316',
-  '#f59e0b', '#eab308', '#22c55e', '#14b8a6', '#0ea5e9', '#64748b',
+  '#c4492f', '#d0782a', '#b8901f', '#6f8f2a', '#4f8f3a', '#2f8a7c',
+  '#2e7fb8', '#4b4fb0', '#7a4ba0', '#b3477a', '#8c5a3c', '#5c6670',
 ];
