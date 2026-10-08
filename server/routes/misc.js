@@ -44,6 +44,7 @@ miscRouter.get('/export', asyncHandler(async (req, res) => {
     logs: (await db.prepare('SELECT * FROM logs WHERE user_id = ? ORDER BY log_date').all(req.user.id)),
     journal: (await db.prepare('SELECT * FROM journal WHERE user_id = ? ORDER BY entry_date').all(req.user.id)),
     achievements: (await db.prepare('SELECT code, unlocked_at FROM achievements WHERE user_id = ?').all(req.user.id)),
+    notes: (await db.prepare('SELECT body, pinned, done, created_at, updated_at FROM notes WHERE user_id = ? ORDER BY id').all(req.user.id)),
   };
 
   res.set('Content-Disposition', `attachment; filename="routine-tracker-${new Date().toISOString().slice(0, 10)}.json"`);

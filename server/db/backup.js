@@ -29,7 +29,7 @@ const HOUR = 60 * 60 * 1000;
 // insert them in this order without tripping a foreign key.
 export const TABLES = [
   'users', 'goals', 'routines', 'logs', 'journal',
-  'achievements', 'sessions', 'push_subscriptions', 'reminders_sent',
+  'achievements', 'sessions', 'push_subscriptions', 'reminders_sent', 'notes',
 ];
 
 /** The server's own calendar date — a backup belongs to the day it was taken. */

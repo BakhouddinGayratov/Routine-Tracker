@@ -122,6 +122,11 @@ export const api = {
   journalEntry: (date) => get(`/journal/${date}`),
   saveJournal: (date, data) => put(`/journal/${date}`, data),
 
+  notes: () => get('/notes'),
+  createNote: (data) => post('/notes', data),
+  updateNote: (id, data) => patch(`/notes/${id}`, data),
+  deleteNote: (id) => del(`/notes/${id}`),
+
   // Push ------------------------------------------------------------------
   pushKey: () => get('/push/key'),
   pushSubscribe: (subscription) => post('/push/subscribe', subscription),

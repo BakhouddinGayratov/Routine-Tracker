@@ -486,6 +486,43 @@ await test('an out-of-range mood is rejected', async () => {
   assert.equal(r.status, 400);
 });
 
+await test('notes can be written, pinned, ticked off and deleted', async () => {
+  const a = await api('POST', '/api/notes', { body: 'Buy a new notebook' });
+  assert.equal(a.status, 201);
+  assert.deepEqual([a.body.note.body, a.body.note.pinned, a.body.note.done], ['Buy a new notebook', false, false]);
+  const b = await api('POST', '/api/notes', { body: 'Call the dentist on Monday' });
+  const c = await api('POST', '/api/notes', { body: 'Ideas for the weekend' });
+
+  await api('PATCH', `/api/notes/${b.body.note.id}`, { pinned: true });
+  await api('PATCH', `/api/notes/${a.body.note.id}`, { done: true });
+  const edited = await api('PATCH', `/api/notes/${c.body.note.id}`, { body: 'Ideas for the weekend: hike' });
+  assert.equal(edited.body.note.body, 'Ideas for the weekend: hike');
+
+  const list = (await api('GET', '/api/notes')).body.notes;
+  const order = list.filter((n) => [a, b, c].some((x) => x.body.note.id === n.id)).map((n) => n.id);
+  assert.deepEqual(order, [b.body.note.id, c.body.note.id, a.body.note.id], 'pinned first, done last');
+
+  assert.equal((await api('POST', '/api/notes', { body: '   ' })).status, 400, 'an empty note is rejected');
+  assert.equal((await api('DELETE', `/api/notes/${a.body.note.id}`)).status, 200);
+  assert.equal((await api('PATCH', `/api/notes/${a.body.note.id}`, { done: false })).status, 404);
+
+  const exported = (await api('GET', '/api/export')).body;
+  assert.ok(exported.notes.some((n) => n.body === 'Ideas for the weekend: hike'), 'notes are in the export');
+
+  for (const x of [b, c]) await api('DELETE', `/api/notes/${x.body.note.id}`);
+});
+
+await test("another user's notes are not reachable", async () => {
+  const mine = await api('POST', '/api/notes', { body: 'Private' });
+  const other = await api('POST', '/api/auth/register', { name: 'Other', email: `notes${Date.now()}@example.com`, password: 'goodpass123' }, { noAuth: true });
+  const headers = { Authorization: `Bearer ${other.body.token}`, 'Content-Type': 'application/json' };
+  const theirs = await (await fetch(`${base}/api/notes`, { headers })).json();
+  assert.equal(theirs.notes.length, 0);
+  const res = await fetch(`${base}/api/notes/${mine.body.note.id}`, { method: 'DELETE', headers });
+  assert.equal(res.status, 404);
+  await api('DELETE', `/api/notes/${mine.body.note.id}`);
+});
+
 await test('an emptied journal entry is removed', async () => {
   await api('PUT', `/api/journal/${today}`, { mood: null, energy: null, body: '' });
   const get = await api('GET', `/api/journal/${today}`);

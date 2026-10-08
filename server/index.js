@@ -11,6 +11,7 @@ import { authRouter } from './routes/auth.js';
 import { routinesRouter } from './routes/routines.js';
 import { goalsRouter } from './routes/goals.js';
 import { pushRouter, notificationsRouter } from './routes/push.js';
+import { notesRouter } from './routes/notes.js';
 import { scheduleReminders } from './lib/reminders.js';
 import { vapidSubjectProblem } from './lib/webpush.js';
 import { daysRouter } from './routes/days.js';
@@ -88,6 +89,7 @@ app.use('/api/notifications', requireAuth, notificationsRouter);
 app.use('/api/days', requireAuth, daysRouter);
 app.use('/api/stats', requireAuth, statsRouter);
 app.use('/api/journal', requireAuth, journalRouter);
+app.use('/api/notes', requireAuth, notesRouter);
 app.use('/api', requireAuth, miscRouter);
 
 // Static client. File names carry no content hash, so the code — HTML, JS,

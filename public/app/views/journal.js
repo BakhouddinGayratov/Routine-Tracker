@@ -5,6 +5,7 @@ import { api } from '../api.js';
 import { state } from '../store.js';
 import { toast, emptyState, skeletonList } from '../ui.js';
 import { todayISO, formatDate, relativeDay, debounce } from '../utils.js';
+import { notesPanel } from './notes.js';
 
 const MOODS = ['😞', '😕', '😐', '🙂', '😄'];
 
@@ -53,6 +54,22 @@ export function renderJournal(container, { date, navigate }) {
   const autosave = debounce(() => save({ silent: true }), 1400);
 
   const pastSlot = el('div');
+  // The entry's text box, so a note can be dropped into it from the side panel.
+  let bodyField = null;
+  let lengthNode = null;
+  const showLength = () => { if (lengthNode) lengthNode.textContent = `${draft.body.length} / 10000`; };
+
+  /** Append a note to the entry at the end, on a line of its own, and save. */
+  const useNote = (text) => {
+    if (!bodyField) return;
+    const current = bodyField.value.replace(/\s+$/, '');
+    bodyField.value = current ? `${current}\n${text}` : text;
+    draft.body = bodyField.value;
+    showLength();
+    bodyField.focus();
+    bodyField.setSelectionRange(bodyField.value.length, bodyField.value.length);
+    autosave();
+  };
 
   const render = () => {
     mount(container,
@@ -60,7 +77,12 @@ export function renderJournal(container, { date, navigate }) {
         el('h1', null, t('journal.title')),
         el('p', null, t('journal.sub')),
       ),
-      editorCard(),
+      // The entry and the notes side by side: what you want to remember sits
+      // next to where you are writing.
+      el('div', { class: 'journal-layout' },
+        editorCard(),
+        notesPanel({ onUse: useNote, compact: true, navigate }),
+      ),
       el('section', { class: 'section' },
         el('div', { class: 'section__head' },
           el('div', { class: 'section__title' }, t('journal.past')),
@@ -87,17 +109,18 @@ export function renderJournal(container, { date, navigate }) {
       pickerRow(t('journal.energy'), [1, 2, 3, 4, 5].map((n) => energyMeter(n)), 'energy'),
 
       el('div', { class: 'field' },
-        el('label', { class: 'field__label', for: 'journal-body' }, t('form.notes')),
+        el('label', { class: 'field__label', for: 'journal-body' }, t('journal.entryLabel')),
         el('textarea', {
           class: 'textarea', id: 'journal-body', rows: '7',
+          ref: (node) => { bodyField = node; },
           placeholder: t('journal.placeholder'),
           maxlength: '10000',
-          oninput: (e) => { draft.body = e.target.value; autosave(); },
+          oninput: (e) => { draft.body = e.target.value; showLength(); autosave(); },
         }, draft.body),
       ),
 
       el('div', { class: 'row row--between' },
-        el('span', { class: 'subtle', style: { 'font-size': 'var(--text-xs)' } },
+        el('span', { class: 'subtle num', style: { 'font-size': 'var(--text-xs)' }, ref: (node) => { lengthNode = node; } },
           `${draft.body.length} / 10000`),
         el('button', { class: 'btn btn--primary', onclick: () => { autosave.cancel(); save(); } },
           icon('check', { size: 15 }), t('journal.save')),

@@ -48,6 +48,10 @@ const PATHS = {
   book: 'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2zM22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z',
   layers: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5',
   grip: 'M9 5h.01M9 12h.01M9 19h.01M15 5h.01M15 12h.01M15 19h.01',
+  // A sheet with its corner folded: a note.
+  note: 'M15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9zM15 3v6h6M7 13h7M7 17h4',
+  pin: 'M12 17v5M9 3h6l-1 6 4 3v2H6v-2l4-3-1-6z',
+  insert: 'M12 5v10M8 11l4 4 4-4M5 19h14',
 };
 
 export function icon(name, { size = 18, stroke = 2, class: cls = '' } = {}) {

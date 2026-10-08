@@ -21,7 +21,7 @@ import { db } from '../server/db/index.js';
 
 export const TABLES = [
   'users', 'goals', 'routines', 'logs', 'journal',
-  'achievements', 'sessions', 'push_subscriptions', 'reminders_sent',
+  'achievements', 'sessions', 'push_subscriptions', 'reminders_sent', 'notes',
 ];
 
 /** Read every table of an open SQLite database. */

@@ -18,6 +18,7 @@ import { renderGoals } from './views/goals.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderStats } from './views/stats.js';
 import { renderJournal } from './views/journal.js';
+import { renderNotes } from './views/notes.js';
 import { renderAchievements } from './views/achievements.js';
 import { renderSettings } from './views/settings.js';
 
@@ -43,6 +44,7 @@ const ROUTES = [
   { path: '/stats', nav: 'stats', view: (c, p) => renderStats(c, p) },
   { path: '/journal', nav: 'journal', view: (c, p) => renderJournal(c, p) },
   { path: '/journal/:date', nav: 'journal', view: (c, p) => renderJournal(c, { ...p, date: p.params.date }) },
+  { path: '/notes', nav: 'notes', view: (c, p) => renderNotes(c, p) },
   { path: '/achievements', nav: 'achievements', view: (c, p) => renderAchievements(c, p) },
   { path: '/settings', nav: 'settings', view: (c, p) => renderSettings(c, p) },
 ];
@@ -81,6 +83,7 @@ const NAV_ITEMS = [
   { key: 'calendar', path: '/calendar', icon: 'calendar', label: () => t('nav.calendar'), group: 'plan' },
   { key: 'stats', path: '/stats', icon: 'stats', label: () => t('nav.stats'), group: 'insight' },
   { key: 'journal', path: '/journal', icon: 'journal', label: () => t('nav.journal'), group: 'insight' },
+  { key: 'notes', path: '/notes', icon: 'note', label: () => t('nav.notes'), group: 'insight' },
   { key: 'achievements', path: '/achievements', icon: 'trophy', label: () => t('nav.achievements'), group: 'insight' },
 ];
 
@@ -90,6 +93,7 @@ const NAV_ITEMS = [
 const TAB_ITEMS = ['today', 'routines', 'goals', 'calendar', 'stats'];
 const ACCOUNT_ITEMS = [
   { key: 'journal', path: '/journal', icon: 'journal', label: () => t('nav.journal') },
+  { key: 'notes', path: '/notes', icon: 'note', label: () => t('nav.notes') },
   { key: 'achievements', path: '/achievements', icon: 'trophy', label: () => t('nav.achievements') },
   { key: 'settings', path: '/settings', icon: 'settings', label: () => t('nav.settings') },
 ];

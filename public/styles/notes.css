@@ -1,0 +1,118 @@
+/* ===========================================================================
+   Quick notes (views/notes.js) — on their own page and beside the journal.
+   Each note is a slip of paper: it sits a little apart, a pinned one is
+   pinned to the top with the accent, a done one is struck through.
+   =========================================================================== */
+
+.journal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  gap: var(--s-4);
+  align-items: start;
+}
+.journal-layout > .notes { position: sticky; top: calc(var(--header-h) + var(--s-4)); }
+@media (max-width: 1080px) {
+  .journal-layout { grid-template-columns: minmax(0, 1fr); }
+  .journal-layout > .notes { position: static; }
+}
+
+.notes-page { max-width: 760px; }
+
+.notes .card__title { display: inline-flex; align-items: center; gap: 6px; }
+.notes .card__title svg { color: var(--accent); }
+.notes__count { font-size: var(--text-xs); color: var(--fg-subtle); }
+
+.notes__composer {
+  display: grid;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+}
+.notes__input { min-height: 0; resize: vertical; line-height: 1.5; }
+.notes__composer-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); font-size: var(--text-xs); }
+
+.notes__list { display: grid; gap: var(--s-2); }
+.notes__empty { color: var(--fg-subtle); font-size: var(--text-sm); padding: var(--s-2) 0; }
+.notes__more { justify-self: start; }
+
+.note {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-3) var(--s-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.note:hover { border-color: var(--line-strong); }
+.note.is-fresh { animation: fade-up var(--t-slow) var(--ease-out); }
+/* Pinned: a strip of the accent along the top edge, like tape. */
+.note.is-pinned { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.note.is-pinned::before {
+  content: '';
+  position: absolute;
+  left: 14px; top: -1px;
+  width: 34px; height: 3px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent);
+}
+.note.is-done { background: transparent; }
+.note.is-done .note__body { color: var(--fg-subtle); text-decoration: line-through; }
+
+.note__tick {
+  width: 20px; height: 20px;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 5px;
+  color: var(--surface);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+.note__tick:hover { border-color: var(--accent); }
+.note__tick.is-on { background: var(--success); border-color: var(--success); }
+
+.note__main { min-width: 0; }
+.note__body {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--fg);
+  cursor: text;
+  border-radius: var(--r-sm);
+}
+.note__body:hover { background: color-mix(in srgb, var(--surface-hover) 60%, transparent); }
+/* On paper and ink the note reads in the serif, like handwriting on a slip. */
+:root:not([data-theme='dark']) .note__body { font-family: var(--font-serif); font-size: var(--text-base); }
+.note__edit { min-height: 0; padding: var(--s-2); font-size: var(--text-sm); }
+
+.note__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fg-subtle);
+}
+.note__actions { display: inline-flex; gap: 2px; opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.note:hover .note__actions, .note:focus-within .note__actions, .note.is-pinned .note__actions { opacity: 1; }
+@media (hover: none) { .note__actions { opacity: 1; } }
+.note__action {
+  display: grid;
+  place-items: center;
+  width: 28px; height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--fg-subtle);
+}
+.note__action:hover { background: var(--surface-hover); color: var(--fg); }
+.note__action.is-on { color: var(--accent); }
+.note__action--danger:hover { background: var(--danger-soft); color: var(--danger); }
+
+/* The compact list is capped at twelve open notes in JS, so it never needs its
+   own scroller (which also clipped the action tooltips sideways). */

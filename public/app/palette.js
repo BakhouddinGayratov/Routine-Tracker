@@ -25,6 +25,7 @@ export function openPalette({ navigate, actions = [] }) {
     { label: t('nav.calendar'), icon: 'calendar', run: () => navigate('/calendar') },
     { label: t('nav.stats'), icon: 'stats', run: () => navigate('/stats') },
     { label: t('nav.journal'), icon: 'journal', run: () => navigate('/journal') },
+    { label: t('nav.notes'), icon: 'note', run: () => navigate('/notes') },
     { label: t('nav.achievements'), icon: 'trophy', run: () => navigate('/achievements') },
     { label: t('nav.settings'), icon: 'settings', run: () => navigate('/settings') },
   ];
