@@ -90,12 +90,22 @@ app.use('/api/stats', requireAuth, statsRouter);
 app.use('/api/journal', requireAuth, journalRouter);
 app.use('/api', requireAuth, miscRouter);
 
-// Static client. Hashed asset names aren't in play here, so keep the cache
-// short and let the browser revalidate.
+// Static client. File names carry no content hash, so the code — HTML, JS,
+// CSS, the manifest and sw.js — must be revalidated on every load ("no-cache"
+// still caches; it only asks first, and an unchanged file costs a 304). The
+// old one-hour max-age meant a deploy reached phones up to an hour late, and
+// then only on the second open. Fonts and images never change in place, so
+// they may be kept.
+const LONG_LIVED = /\.(woff2|png|svg|ico)$/;
+
 app.use(express.static(config.publicDir, {
   index: 'index.html',
-  maxAge: config.isProd ? '1h' : 0,
   etag: true,
+  setHeaders(res, filePath) {
+    res.setHeader('Cache-Control', config.isProd && LONG_LIVED.test(filePath)
+      ? 'public, max-age=2592000'
+      : 'no-cache');
+  },
 }));
 
 app.use(notFound);

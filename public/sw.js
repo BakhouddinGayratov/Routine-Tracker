@@ -3,9 +3,10 @@
  *
  * Two jobs:
  *   1. Make the app installable and let its shell open without a network:
- *      page loads are network-first with the cached index.html as fallback;
- *      scripts, styles and icons are stale-while-revalidate, so an update
- *      arrives on the next load. API responses are never cached — they are
+ *      pages, scripts and styles are network-first with the cached copy as
+ *      the offline fallback, so a deploy shows on the very next load; fonts
+ *      and images never change in place and come from the cache first.
+ *      API responses are never cached — they are
  *      personal and a stale answer would show the wrong day.
  *   2. Show the reminders the server pushes (server/lib/reminders.js), which
  *      is what lets them arrive while no tab is open.
@@ -14,9 +15,15 @@
  * for the capacitor:// scheme.
  */
 
-const CACHE = 'rt-shell-v2';   // bump when a fix must reach installed apps promptly
+const CACHE = 'rt-shell-v3';   // bump to drop every cached file on the next visit
 const SHELL = '/index.html';
-const STATIC = /^\/(app|styles|assets)\/|^\/manifest\.webmanifest$/;
+// The app's own code: always asked for fresh while online.
+const CODE = /^\/(app|styles)\/|^\/manifest\.webmanifest$/;
+// Files that never change under the same name.
+const FIXED = /^\/(assets|fonts)\//;
+// How long to wait for the network before using the cached copy, so a weak
+// connection still opens the app quickly.
+const NETWORK_TIMEOUT = 3500;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.add(SHELL)).then(() => self.skipWaiting()));
@@ -48,15 +55,35 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (STATIC.test(url.pathname)) {
+  // Network-first. It used to be stale-while-revalidate, which always showed
+  // the previous version first, and its background refresh went through the
+  // browser's HTTP cache — together a deploy could take an hour and a second
+  // open to appear. cache: 'no-cache' makes the request ask the server.
+  if (CODE.test(url.pathname)) {
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const fresh = await Promise.race([
+          fetch(request, { cache: 'no-cache' }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), NETWORK_TIMEOUT)),
+        ]);
+        if (fresh.ok) cache.put(request, fresh.clone());
+        return fresh;
+      } catch {
+        return (await cache.match(request)) || fetch(request);
+      }
+    })());
+    return;
+  }
+
+  if (FIXED.test(url.pathname)) {
     event.respondWith((async () => {
       const cache = await caches.open(CACHE);
       const cached = await cache.match(request);
-      const refresh = fetch(request).then((response) => {
-        if (response.ok) cache.put(request, response.clone());
-        return response;
-      }).catch(() => cached);
-      return cached || refresh;
+      if (cached) return cached;
+      const response = await fetch(request);
+      if (response.ok) cache.put(request, response.clone());
+      return response;
     })());
   }
 });
