@@ -235,16 +235,16 @@ await test('postponing a one-off routine moves its date', async () => {
   await api('DELETE', `/api/routines/${id}`);
 });
 
-await test('postponing a daily routine only skips the day', async () => {
+await test('postponing a daily routine takes the day out without marking it missed', async () => {
   const created = await api('POST', '/api/routines', { title: 'Stretch', start_date: today });
   const id = created.body.routine.id;
 
   const r = await api('POST', `/api/routines/${id}/postpone`, { date: today });
-  assert.equal(r.body.moved, 'skipped', 'a daily routine already lands on tomorrow');
+  assert.equal(r.body.moved, 'excluded', 'a daily routine already lands on tomorrow');
   assert.equal(r.body.routine.id, id, 'no copy is created');
 
   const day = await api('GET', `/api/days/${today}`);
-  assert.equal(day.body.items.find((i) => i.id === id).status, 'skipped');
+  assert.equal(day.body.items.some((i) => i.id === id), false, 'gone from today, not shown as missed');
   const next = await api('GET', `/api/days/${tomorrow}`);
   assert.equal(next.body.items.find((i) => i.id === id).status, 'pending');
 
@@ -266,7 +266,7 @@ await test('postponing a weekly routine puts a one-off copy on tomorrow', async 
   assert.equal(r.body.routine.title, 'Deep clean', 'the copy is the same work, so it keeps the name');
 
   const day = await api('GET', `/api/days/${today}`);
-  assert.equal(day.body.items.find((i) => i.id === id).status, 'skipped');
+  assert.equal(day.body.items.some((i) => i.id === id), false, 'the weekly occurrence left today');
   const next = await api('GET', `/api/days/${tomorrow}`);
   assert.equal(next.body.items.some((i) => i.id === r.body.routine.id), true);
 
@@ -281,6 +281,57 @@ await test('a day the routine is not scheduled for cannot be postponed', async (
   const r = await api('POST', `/api/routines/${created.body.routine.id}/postpone`, { date: tomorrow });
   assert.equal(r.status, 400);
   await api('DELETE', `/api/routines/${created.body.routine.id}`);
+});
+
+await test('removing only one day keeps every other day of a repeating routine', async () => {
+  const created = await api('POST', '/api/routines', { title: 'Gym', start_date: today, repeat_type: 'daily' });
+  const id = created.body.routine.id;
+  await api('POST', '/api/days/log', { routine_id: id, date: today, status: 'done' });
+
+  const r = await api('POST', `/api/routines/${id}/remove-day`, { date: today });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.deleted, false);
+
+  const day = await api('GET', `/api/days/${today}`);
+  assert.equal(day.body.items.some((i) => i.id === id), false, 'gone from that day');
+  const next = await api('GET', `/api/days/${tomorrow}`);
+  assert.equal(next.body.items.some((i) => i.id === id), true, 'still there the next day');
+  const log = await db.prepare('SELECT 1 FROM logs WHERE routine_id = ? AND log_date = ?').get(id, today);
+  assert.equal(log, undefined, "that day's log went with it");
+
+  // Removing a second day keeps both, without duplicates.
+  await api('POST', `/api/routines/${id}/remove-day`, { date: tomorrow });
+  const again = await api('POST', `/api/routines/${id}/remove-day`, { date: tomorrow });
+  assert.equal(again.status, 400, 'a day already removed is no longer scheduled');
+  const row = await db.prepare('SELECT excluded_dates FROM routines WHERE id = ?').get(id);
+  assert.equal(row.excluded_dates, `${today},${tomorrow}`);
+
+  await api('DELETE', `/api/routines/${id}`);
+});
+
+await test('removing the only day of a one-off deletes it', async () => {
+  const created = await api('POST', '/api/routines', { title: 'Dentist', start_date: today, repeat_type: 'once' });
+  const r = await api('POST', `/api/routines/${created.body.routine.id}/remove-day`, { date: today });
+  assert.equal(r.body.deleted, true);
+  assert.equal((await api('GET', `/api/routines/${created.body.routine.id}`)).status, 404);
+});
+
+await test('a routine marked ✗ counts as missed in the statistics', async () => {
+  const created = await api('POST', '/api/routines', { title: 'Missed one', start_date: today, repeat_type: 'daily' });
+  const id = created.body.routine.id;
+  const before = (await api('GET', '/api/stats/overview?days=7')).body.totals;
+
+  await api('POST', '/api/days/log', { routine_id: id, date: today, status: 'skipped' });
+  const after = (await api('GET', '/api/stats/overview?days=7')).body.totals;
+  assert.equal(after.missed, before.missed + 1, 'the ✗ is counted on its own');
+  assert.equal(after.due, before.due, 'it is still due — a missed routine is not excused');
+  assert.equal(after.done, before.done);
+
+  const detail = (await api('GET', `/api/routines/${id}`)).body.stats;
+  assert.equal(detail.missed, 1);
+  assert.equal(detail.rate, 0);
+
+  await api('DELETE', `/api/routines/${id}`);
 });
 
 await test("another user cannot postpone someone else's routine", async () => {

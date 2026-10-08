@@ -393,7 +393,11 @@
 .routine.is-done { opacity: 0.62; }
 .routine.is-done::before { opacity: 0.35; }
 .routine.is-done .routine__title { text-decoration: line-through; text-decoration-color: var(--fg-subtle); }
-.routine.is-skipped { opacity: 0.5; }
+/* Marked ✗ (status 'skipped'): a plan that was not kept. It stays fully
+   legible and reads as a failure — faded out, it looked like a rest day. */
+.routine.is-skipped { border-color: color-mix(in srgb, var(--danger) 35%, var(--line)); background: color-mix(in srgb, var(--danger) 6%, var(--surface)); }
+.routine.is-skipped::before { background: var(--danger); opacity: 1; }
+.routine.is-skipped .routine__title { color: var(--fg-muted); }
 .routine.is-overdue::before { background: var(--warning); }
 
 /* The check control: a ring that fills and stamps a tick. */
@@ -417,7 +421,12 @@
   color: #fff;
   animation: check-pop 380ms var(--spring);
 }
-.check.is-skipped { border-color: var(--fg-subtle); color: var(--fg-subtle); border-style: dashed; }
+.check.is-skipped { border-color: var(--danger); background: var(--danger); color: #fff; }
+
+/* Done / missed tally under the completion figure on Statistics. */
+.kpi-tally { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s-3); }
+.kpi-tally__done { color: var(--success, var(--fg-muted)); font-weight: 600; }
+.kpi-tally__missed { color: var(--danger); font-weight: 600; }
 
 @keyframes check-pop {
   0% { transform: scale(0.7); }
@@ -745,3 +754,19 @@
   0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
   100% { transform: translateY(105vh) rotate(760deg); opacity: 0.15; }
 }
+
+/* An option in a choiceDialog: the action, and one line on what it does. */
+.choice {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  width: 100%; padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  background: var(--surface-2); text-align: left;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.choice:hover, .choice:focus-visible { border-color: var(--line-strong); background: var(--surface-hover); }
+.choice__label { font-weight: 620; color: var(--fg); }
+.choice__hint { font-size: var(--text-sm); color: var(--fg-muted); }
+.choice--danger .choice__label { color: var(--danger); }
+.choice--danger:hover, .choice--danger:focus-visible { border-color: var(--danger); background: var(--danger-soft); }
+.btn--icon.btn--danger-ghost.is-active { background: var(--danger-soft); color: var(--danger); }
+.text-danger { color: var(--danger); font-weight: 600; }

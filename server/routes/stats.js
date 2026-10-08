@@ -56,6 +56,9 @@ statsRouter.get('/overview', asyncHandler(async (req, res) => {
       archived: routines.length - active.length,
       due: totalDue,
       done: round(totalDone),
+      // Routines marked ✗ (status 'skipped'). They already count against the
+      // rate like any routine not done; this makes them visible on their own.
+      missed: tracked.reduce((s, d) => s + d.skipped, 0),
       rate: rate === null ? null : round(rate),
       delta: rate === null || prevRate === null ? null : round(rate - prevRate),
       perfect_days: tracked.filter((d) => d.rate === 100).length,

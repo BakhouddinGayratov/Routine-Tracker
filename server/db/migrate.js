@@ -33,6 +33,18 @@ const MIGRATIONS = [
       await addColumn(db, 'users', 'routine_defaults', "TEXT NOT NULL DEFAULT '{}'");
     },
   },
+  {
+    // Single days taken out of a repeating routine ("delete only this day",
+    // "move to tomorrow"), as a comma-separated list of 'YYYY-MM-DD'. The
+    // recurrence engine treats such a day as not scheduled at all, so it
+    // neither counts as missed nor shows up anywhere — unlike a missed log,
+    // which is a failure on purpose.
+    version: 3,
+    name: 'routines.excluded_dates',
+    async up(db) {
+      await addColumn(db, 'routines', 'excluded_dates', "TEXT NOT NULL DEFAULT ''");
+    },
+  },
 ];
 
 export const SCHEMA_VERSION = MIGRATIONS.length ? MIGRATIONS[MIGRATIONS.length - 1].version : 0;

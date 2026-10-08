@@ -11,11 +11,17 @@ import { weekday, dayOfMonth, daysBetween, isValidDate } from './dates.js';
  *   interval  — every N days counted from start_date
  *   monthly   — on the days of the month listed in repeat_days ('1,15')
  *   once      — only on start_date
+ *
+ * Days listed in excluded_dates are taken out of the schedule one by one
+ * ("delete only this day", "move to tomorrow"). Checking them here means the
+ * day view, statistics, calendar and reminders all agree without each having
+ * to know about exclusions.
  */
 export function isDueOn(routine, iso) {
   if (!isValidDate(iso)) return false;
   if (iso < routine.start_date) return false;
   if (routine.end_date && iso > routine.end_date) return false;
+  if (routine.excluded_dates && excludedDates(routine).includes(iso)) return false;
 
   switch (routine.repeat_type) {
     case 'daily':
@@ -95,4 +101,14 @@ export function describeRepeat(routine) {
     default:
       return '';
   }
+}
+
+/** The days taken out of a routine's schedule, as 'YYYY-MM-DD' strings. */
+export function excludedDates(routine) {
+  return String(routine.excluded_dates || '').split(',').filter(Boolean);
+}
+
+/** excluded_dates with `iso` added: sorted, without duplicates. */
+export function withExcludedDate(routine, iso) {
+  return [...new Set([...excludedDates(routine), iso])].sort().join(',');
 }

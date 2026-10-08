@@ -94,6 +94,10 @@ export function routineStats(routine, logs, from, to, today) {
   );
   const dates = dateRange(from, to).filter((d) => isDueOn(routine, d));
   const completed = dates.filter((d) => done.has(d));
+  // Marked with ✗ — an explicit "I did not do it", stored as 'skipped'.
+  const missed = new Set(
+    logs.filter((l) => l.routine_id === routine.id && l.status === 'skipped').map((l) => l.log_date),
+  );
 
   let current = 0;
   for (let i = dates.length - 1; i >= 0; i--) {
@@ -117,6 +121,7 @@ export function routineStats(routine, logs, from, to, today) {
     category: routine.category,
     due: dates.length,
     done: completed.length,
+    missed: dates.filter((d) => missed.has(d)).length,
     rate: dates.length ? round((completed.length / dates.length) * 100) : null,
     streak: current,
     best_streak: Math.max(longest, current),

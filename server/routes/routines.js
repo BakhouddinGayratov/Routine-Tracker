@@ -3,7 +3,7 @@ import { db, tx } from '../db/index.js';
 import { ApiError } from '../lib/errors.js';
 import { validate, v } from '../lib/validate.js';
 import { asyncHandler } from '../middleware/error.js';
-import { describeRepeat, isDueOn } from '../lib/schedule.js';
+import { describeRepeat, isDueOn, withExcludedDate } from '../lib/schedule.js';
 import { todayIn, addDays, dateRange } from '../lib/dates.js';
 import { routineStats } from '../lib/stats.js';
 import { routineDefaultsOf } from '../lib/auth.js';
@@ -178,11 +178,40 @@ routinesRouter.delete('/:id', asyncHandler(async (req, res) => {
 }));
 
 /**
+ * Take one day out of a routine's schedule; every other day stays.
+ * Whatever was logged for that day goes with it, and the day counts neither
+ * as done nor as missed. A one-off has only that day, so it is deleted.
+ */
+async function excludeDay(t, routine, date) {
+  await t.prepare('UPDATE routines SET excluded_dates = ?, updated_at = utc_now() WHERE id = ?')
+    .run(withExcludedDate(routine, date), routine.id);
+  await t.prepare('DELETE FROM logs WHERE routine_id = ? AND log_date = ?').run(routine.id, date);
+  await t.prepare('DELETE FROM reminders_sent WHERE routine_id = ? AND log_date = ?').run(routine.id, date);
+}
+
+routinesRouter.post('/:id/remove-day', asyncHandler(async (req, res) => {
+  const routine = await ownedRoutine(req.user.id, req.params.id);
+  const { date } = validate(
+    { date: req.body?.date ?? todayIn(req.user.timezone) },
+    { date: v.date() },
+  );
+  if (!isDueOn(routine, date)) throw ApiError.badRequest('That routine is not scheduled on that day');
+
+  if (routine.repeat_type === 'once') {
+    await db.prepare('DELETE FROM routines WHERE id = ? AND user_id = ?').run(routine.id, req.user.id);
+    return res.json({ ok: true, deleted: true });
+  }
+
+  await tx((t) => excludeDay(t, routine, date));
+  res.json({ ok: true, deleted: false, date });
+}));
+
+/**
  * Move one day's occurrence to the next day.
  *
  * What "postpone" means depends on the routine. A one-off has nothing to
  * recur, so the routine itself changes date. A repeating one must keep its
- * rule — the day being left is marked skipped, and the occurrence reappears
+ * rule — the day being left is taken out of it, and the occurrence reappears
  * tomorrow: for a daily routine the rule already lands there, so nothing is
  * created; for a weekly, monthly or every-N-days routine it would not, so a
  * single-day copy is placed on tomorrow instead.
@@ -210,14 +239,11 @@ routinesRouter.post('/:id/postpone', asyncHandler(async (req, res) => {
       return { moved: 'shifted', id: routine.id };
     }
 
-    await t.prepare(
-      `INSERT INTO logs (routine_id, user_id, log_date, status, value, note)
-       VALUES (@routine_id, @user_id, @log_date, 'skipped', 0, '')
-       ON CONFLICT (routine_id, log_date)
-       DO UPDATE SET status = 'skipped', value = 0, completed_at = utc_now()`,
-    ).run({ routine_id: routine.id, user_id: req.user.id, log_date: from });
+    // The day being left is taken out of the schedule rather than logged as
+    // missed: moving work to tomorrow is a plan, not a failure.
+    await excludeDay(t, routine, from);
 
-    if (isDueOn(routine, to)) return { moved: 'skipped', id: routine.id };
+    if (isDueOn(routine, to)) return { moved: 'excluded', id: routine.id };
 
     const { next: sort_order } = await t.prepare(
       'SELECT COALESCE(MAX(sort_order), 0) + 1 AS next FROM routines WHERE user_id = ?',

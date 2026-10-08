@@ -57,7 +57,12 @@ export function renderStats(container, { navigate }) {
           label: t('stats.completion'),
           value: totals.rate === null ? '—' : `${pct(totals.rate)}`,
           unit: totals.rate === null ? '' : '%',
-          foot: totals.delta === null ? null : delta(totals.delta, days),
+          // Done out of due, and the ✗ count beside it: a routine marked as not
+          // done is a failure, so it is shown, not folded quietly into the %.
+          foot: el('span', { class: 'kpi-tally' },
+            el('span', { class: 'kpi-tally__done' }, `✓ ${pct(totals.done)}/${totals.due}`),
+            totals.missed ? el('span', { class: 'kpi-tally__missed' }, `✗ ${totals.missed} ${t('stats.missed')}`) : null,
+            totals.delta === null ? null : delta(totals.delta, days)),
           accent: '#818cf8',
           emoji: '🎯',
         }),
@@ -212,6 +217,9 @@ export function renderStats(container, { navigate }) {
                   style: { width: `${row.rate ?? 0}%`, background: row.color, display: 'block', height: '100%' },
                 })),
             ),
+            row.missed
+              ? el('span', { class: 'badge badge--danger', title: t('stats.missed') }, `✗ ${row.missed}`)
+              : null,
             el('span', { class: 'tnum', style: { 'font-weight': '640', 'font-size': 'var(--text-sm)' } },
               row.rate === null ? '—' : `${pct(row.rate)}%`),
             row.streak > 0

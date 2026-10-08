@@ -3,7 +3,7 @@ import { icon } from '../icons.js';
 import { t } from '../i18n.js';
 import { api } from '../api.js';
 import { state, invalidateRoutines, refreshSummary } from '../store.js';
-import { toast, emptyState, skeletonList, progressRing, celebrate, confirmDialog } from '../ui.js';
+import { toast, emptyState, skeletonList, progressRing, celebrate, confirmDialog, choiceDialog } from '../ui.js';
 import { openRoutineForm, repeatLabel } from './routine-form.js';
 import {
   todayISO, addDays, formatDate, relativeDay, formatDuration, nowTime,
@@ -125,18 +125,41 @@ export function renderToday(container, { date, navigate }) {
     }
   };
 
+  /**
+   * Delete from the day view. A repeating routine offers two different
+   * things: take just this day out of the schedule (neither done nor missed),
+   * or delete the routine with its whole history. A one-off has only this
+   * day, so the plain confirmation is enough.
+   */
   const removeRoutine = async (item) => {
-    const ok = await confirmDialog({
-      title: t('routines.deleteConfirm', { title: item.title }),
-      message: t('routines.deleteWarn'),
-      confirmLabel: t('action.delete'),
-      danger: true,
-    });
-    if (!ok) return;
+    let choice;
+    if (item.repeat_type === 'once') {
+      const ok = await confirmDialog({
+        title: t('routines.deleteConfirm', { title: item.title }),
+        message: t('routines.deleteWarn'),
+        confirmLabel: t('action.delete'),
+        danger: true,
+      });
+      choice = ok ? 'all' : null;
+    } else {
+      choice = await choiceDialog({
+        title: t('routines.deleteConfirm', { title: item.title }),
+        choices: [
+          { value: 'day', label: t('delete.onlyDay'), hint: t('delete.onlyDayHint', { date: formatDate(selected, { locale: state.user.locale }) }) },
+          { value: 'all', label: t('delete.everything'), hint: t('routines.deleteWarn'), danger: true },
+        ],
+      });
+    }
+    if (!choice) return;
 
     try {
-      await api.deleteRoutine(item.id);
-      toast(t('toast.routineDeleted'));
+      if (choice === 'day') {
+        await api.removeRoutineDay(item.id, selected);
+        toast(t('toast.dayRemoved'));
+      } else {
+        await api.deleteRoutine(item.id);
+        toast(t('toast.routineDeleted'));
+      }
       invalidateRoutines();
       await load();
       refreshSummary();
@@ -351,7 +374,8 @@ export function renderToday(container, { date, navigate }) {
       el('p', { class: 'hero-card__line', style: { 'margin-top': 'var(--s-2)' } },
         el('b', null, t('today.progress', { done: done.length, total: data.items.length })),
         minutes ? ` · ${formatDuration(minutes)}` : '',
-        skipped ? ` · ${t('today.summarySkipped', { count: skipped })}` : '',
+        skipped ? ' · ' : '',
+        skipped ? el('span', { class: 'text-danger' }, `✗ ${t('today.summarySkipped', { count: skipped })}`) : null,
       ),
       goalChips.length
         ? el('div', { class: 'row row--wrap', style: { gap: 'var(--s-2)', 'margin-top': 'var(--s-2)' } },
@@ -572,7 +596,7 @@ export function renderToday(container, { date, navigate }) {
         'aria-pressed': String(isDone),
         'aria-label': `${isDone ? t('action.undo') : t('action.confirm')}: ${item.title}`,
         onclick: () => setStatus(item, isDone ? 'pending' : 'done'),
-      }, icon(isSkipped ? 'skip' : 'check', { size: 15, stroke: 3.2 })),
+      }, icon(isSkipped ? 'x' : 'check', { size: 15, stroke: 3.2 })),
 
       item.start_time ? el('div', { class: 'routine__time tnum' }, item.start_time) : null,
       el('div', { class: 'routine__icon' }, item.icon),
@@ -587,17 +611,21 @@ export function renderToday(container, { date, navigate }) {
           item.duration_min ? el('span', null, icon('clock', { size: 12 }), formatDuration(item.duration_min)) : null,
           item.priority === 'high' ? el('span', { class: 'badge badge--warning' }, t('priority.high')) : null,
           el('span', null, icon('repeat', { size: 12 }), repeatLabel(item)),
-          isSkipped ? el('span', { class: 'badge badge--muted' }, t('action.skip')) : null,
+          isSkipped ? el('span', { class: 'badge badge--danger' }, `✗ ${t('status.missed')}`) : null,
         ),
       ),
 
       item.goal_type === 'quantity' ? quantityControl(item) : null,
 
       el('div', { class: 'routine__actions' },
+        // ✗ "not done": a deliberate failure mark that counts against the
+        // statistics (stored as status 'skipped'). Tapping again undoes it.
         !isDone ? el('button', {
-          class: 'btn btn--icon', 'data-tip': t('action.skip'),
+          class: ['btn btn--icon btn--danger-ghost', isSkipped && 'is-active'],
+          'data-tip': isSkipped ? t('action.undoMissed') : t('action.markMissed'),
+          'aria-pressed': String(isSkipped),
           onclick: () => setStatus(item, isSkipped ? 'pending' : 'skipped'),
-        }, icon('skip', { size: 15 })) : null,
+        }, icon('x', { size: 16, stroke: 2.6 })) : null,
         !isDone ? el('button', {
           class: 'btn btn--icon', 'data-tip': t('action.postpone'),
           onclick: () => postpone(item),

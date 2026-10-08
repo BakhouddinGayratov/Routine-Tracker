@@ -133,6 +133,40 @@ export function confirmDialog({ title, message, confirmLabel, danger = false }) 
   });
 }
 
+/**
+ * Ask the user to pick one of a few actions, each explained in a line.
+ * Resolves with the chosen `value`, or null when cancelled.
+ *
+ * @param {{ title: string, message?: string,
+ *           choices: Array<{ value: string, label: string, hint?: string, danger?: boolean }> }} options
+ */
+export function choiceDialog({ title, message, choices }) {
+  return new Promise((resolve) => {
+    modal({
+      title,
+      size: 'narrow',
+      build: (close) => ({
+        body: el('div', { class: 'col', style: { gap: 'var(--s-3)' } },
+          message ? el('p', { class: 'muted' }, message) : null,
+          ...choices.map((choice, index) => el('button', {
+            type: 'button',
+            class: ['choice', choice.danger && 'choice--danger'],
+            ...(index === 0 ? { 'data-autofocus': '' } : {}),
+            onclick: () => close(choice.value),
+          },
+            el('span', { class: 'choice__label' }, choice.label),
+            choice.hint ? el('span', { class: 'choice__hint' }, choice.hint) : null,
+          )),
+        ),
+        footer: [
+          el('button', { class: 'btn btn--ghost', type: 'button', onclick: () => close(null) }, t('action.cancel')),
+        ],
+      }),
+      onClose: (result) => resolve(typeof result === 'string' ? result : null),
+    });
+  });
+}
+
 /* --- Celebration ---------------------------------------------------------- */
 
 /** A short confetti burst. Purely decorative, and skipped for reduced motion. */

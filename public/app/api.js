@@ -91,6 +91,7 @@ export const api = {
   deleteRoutine: (id) => del(`/routines/${id}`),
   duplicateRoutine: (id) => post(`/routines/${id}/duplicate`),
   postponeRoutine: (id, date) => post(`/routines/${id}/postpone`, { date }),
+  removeRoutineDay: (id, date) => post(`/routines/${id}/remove-day`, { date }),
   reorderRoutines: (ids) => post('/routines/reorder', { ids }),
 
   // Goals -----------------------------------------------------------------

@@ -104,7 +104,8 @@ export function renderRoutineDetail(container, { id, navigate }) {
       el('div', { class: 'grid grid--4', style: { 'margin-top': 'var(--s-6)' } },
         kpi(t('stats.currentStreak'), stats.streak, t('misc.days'), '🔥'),
         kpi(t('stats.bestStreak'), stats.best_streak, t('misc.days'), '🏆'),
-        kpi(t('stats.completion'), stats.rate === null ? '—' : `${pct(stats.rate)}%`, t('stats.days', { count: 90 }), '🎯'),
+        kpi(t('stats.completion'), stats.rate === null ? '—' : `${pct(stats.rate)}%`,
+          stats.missed ? `✗ ${stats.missed} ${t('stats.missed')} · ${t('stats.days', { count: 90 })}` : t('stats.days', { count: 90 }), '🎯'),
         kpi('Last done', stats.last_done ? formatDate(stats.last_done, { locale: state.user.locale }) : t('misc.never'), '', '📅'),
       ),
 
@@ -122,7 +123,7 @@ export function renderRoutineDetail(container, { id, navigate }) {
                     width: '18px', height: '18px', 'border-radius': '5px',
                     background: day.status === 'done' ? routine.color
                       : day.status === 'partial' ? `color-mix(in srgb, ${routine.color} 45%, var(--surface-3))`
-                      : day.status === 'skipped' ? 'var(--surface-3)'
+                      : day.status === 'skipped' ? 'var(--danger)'
                       : 'var(--surface-3)',
                     opacity: day.status === 'pending' ? '0.6' : '1',
                   },
