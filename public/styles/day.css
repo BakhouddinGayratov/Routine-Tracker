@@ -331,3 +331,42 @@
   .hero-card__date { font-size: 1.45rem; }
   :root[data-theme='dark'] .hero-card__date { font-size: 1.15rem; }
 }
+
+/* --- One-column grid (schedule-layout.js) ----------------------------------
+   Every block spans the lane; the rail marks the exact minute each block
+   starts and ends, with whole hours only in the empty stretches. */
+
+.hours__mark { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
+.hours__mark.is-hour { border-top-style: dashed; }
+.hours__mark .hours__label {
+  top: 0;
+  padding: 0 0 0 var(--s-3);
+  transform: translateY(-50%);
+  line-height: 1;
+  font-size: 11.5px;
+}
+.hours__mark.is-edge .hours__label { color: var(--fg); font-weight: 600; }
+.hours__mark.is-hour .hours__label { color: var(--fg-subtle); }
+
+.tl-block { left: 0; right: 0; align-items: center; }
+.tl-block__body { display: grid; gap: 2px; }
+.tl-block__title { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+.tl-block__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-block__part {
+  flex: none;
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--rc) 18%, transparent);
+  color: var(--fg-muted);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.tl-block__time { font-size: 11.5px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Short blocks keep their times — on the same line as the name. */
+.tl-block.is-short .tl-block__body { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); }
+.tl-block.is-short .tl-block__time { display: block; }
+/* A later part of a split routine: the same colour, a dashed edge on top. */
+.tl-block.is-continued { border-top-style: dashed; }
+.tl-block.is-continued .tl-block__name { color: var(--fg-muted); }
+/* A routine that had no minute of its own: a marker where it starts. */
+.tl-block.is-marker { border-style: dashed; border-left-style: solid; }

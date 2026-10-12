@@ -574,6 +574,55 @@ await test('a reorder request without ids is rejected', async () => {
 
 // --- Web Push -----------------------------------------------------------
 
+// The day grid's one-column layout lives in the client but is pure, so it is
+// tested here: what shows when, and that nothing is ever lost.
+const { slicePieces, layoutColumn } = await import('../public/app/schedule-layout.js');
+const hm = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m; };
+const span = (id, from, to) => ({ id, start: hm(from), end: hm(to) });
+const shape = (pieces) => pieces.map((p) => `${p.id}:${p.start}-${p.end}${p.parts > 1 ? `#${p.part}/${p.parts}` : ''}${p.marker ? '!' : ''}`);
+
+await test('a short routine inside a long one splits it in two', () => {
+  const pieces = slicePieces([span(1, '04:30', '06:00'), span(2, '04:50', '05:00')]);
+  assert.deepEqual(shape(pieces), [
+    `1:${hm('04:30')}-${hm('04:50')}#1/2`, `2:${hm('04:50')}-${hm('05:00')}`, `1:${hm('05:00')}-${hm('06:00')}#2/2`,
+  ]);
+});
+
+await test('of two routines starting together, the shorter goes first', () => {
+  const pieces = slicePieces([span(1, '04:30', '06:00'), span(2, '04:30', '04:40')]);
+  assert.deepEqual(shape(pieces), [`2:${hm('04:30')}-${hm('04:40')}`, `1:${hm('04:40')}-${hm('06:00')}`]);
+});
+
+await test('overlapping routines never share a moment, and none is lost', () => {
+  const items = [
+    span(1, '04:00', '04:15'), span(2, '04:15', '04:40'), span(3, '04:30', '06:00'), span(4, '05:20', '05:30'),
+    span(5, '10:00', '11:00'), span(6, '10:00', '11:00'),                        // identical spans
+    span(7, '12:00', '13:00'), span(8, '12:00', '12:30'), span(9, '12:30', '13:00'), // fully covered
+    span(10, '15:00', '15:00'),                                                  // no length
+  ];
+  const pieces = slicePieces(items);
+  for (let i = 1; i < pieces.length; i += 1) {
+    assert.ok(pieces[i].start >= pieces[i - 1].end, `pieces ${i - 1} and ${i} overlap`);
+  }
+  for (const item of items) assert.ok(pieces.some((p) => p.id === item.id), `routine ${item.id} disappeared`);
+  assert.ok(pieces.find((p) => p.id === 7).marker, 'a fully covered routine keeps a marker');
+  assert.deepEqual(shape(pieces.filter((p) => p.id === 5 || p.id === 6)),
+    [`5:${hm('10:00')}-${hm('10:30')}`, `6:${hm('10:30')}-${hm('11:00')}`]);
+});
+
+await test('the column scale keeps every block readable and every time in order', () => {
+  const pieces = slicePieces([span(1, '04:00', '04:05'), span(2, '04:05', '05:00'), span(3, '09:00', '09:30')]);
+  const { segments, y } = layoutColumn(pieces, { from: hm('03:30'), to: hm('10:00'), ppm: 1, minPx: 40, foldMin: 120, foldPx: 30 });
+  const blocks = segments.filter((s) => s.piece);
+  assert.ok(blocks.every((s) => s.height >= 40), 'a five-minute block is still 40px tall');
+  assert.ok(segments.some((s) => s.folded && s.a === hm('05:00') && s.b === hm('09:00')), 'four empty hours fold');
+  let previous = -1;
+  for (let minute = hm('03:30'); minute <= hm('10:00'); minute += 5) {
+    assert.ok(y(minute) >= previous, `the scale runs backwards at ${minute}`);
+    previous = y(minute);
+  }
+});
+
 const webpush = await import('../server/lib/webpush.js');
 const { runReminders, clockIn } = await import('../server/lib/reminders.js');
 const nodeCrypto = await import('node:crypto');

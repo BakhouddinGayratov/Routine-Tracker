@@ -5,6 +5,7 @@ import { api } from '../api.js';
 import { state, invalidateRoutines, refreshSummary } from '../store.js';
 import { toast, emptyState, skeletonList, celebrate, confirmDialog, choiceDialog, countUp } from '../ui.js';
 import { dayDial } from '../dial.js';
+import { slicePieces, layoutColumn } from '../schedule-layout.js';
 import { openRoutineForm, repeatLabel } from './routine-form.js';
 import {
   todayISO, addDays, formatDate, relativeDay, formatDuration, nowTime,
@@ -669,111 +670,94 @@ export function renderToday(container, { date, navigate }) {
   // --- Hour grid -------------------------------------------------------------
 
   /**
-   * The day as a calendar column: an hour rail on the left, each routine a
-   * block as tall as it lasts, at the height of its start. Routines that
-   * overlap share the width side by side. Routines without a time sit in a
-   * short list above the grid. The visible range is the day's first to last
-   * routine with an hour of air either side (and now, if today).
+   * The day as one column (schedule-layout.js): every moment shows exactly
+   * one routine, never two side by side. Where routines overlap, the one that
+   * ends first is shown and the longer one resumes after it — a short routine
+   * inside a long one splits it in two. The rail on the left marks the exact
+   * minute each block starts and ends (04:15, 04:30 …), with whole hours only
+   * in the empty stretches between. Short blocks are drawn tall enough to read
+   * and very long ones are capped, so the scale stretches, but every label
+   * sits where its minute falls on that scale. Routines without a time sit in
+   * a short list above.
    */
   const hourGrid = () => {
-    const timed = data.items.filter((i) => i.start_time).map((item) => {
-      const start = toMinutes(item.start_time);
-      return { item, start, end: start + Math.max(item.duration_min || 0, 0) };
-    }).sort((a, b) => a.start - b.start || b.end - a.end);
+    const timed = data.items.filter((i) => i.start_time);
     const anytime = data.items.filter((i) => !i.start_time);
+    const byId = new Map(timed.map((item) => [item.id, item]));
+    const pieces = slicePieces(timed.map((item) => {
+      const start = toMinutes(item.start_time);
+      return { id: item.id, start, end: Math.min(1440, start + Math.max(item.duration_min || 0, 0)) };
+    }));
 
     const isToday = selected === data.today;
     const nowMin = toMinutes(nowTime());
-    let first = Math.min(...timed.map((b) => b.start));
-    let last = Math.max(...timed.map((b) => Math.max(b.end, b.start + 30)));
+    let first = Math.min(...pieces.map((p) => p.start));
+    let last = Math.max(...pieces.map((p) => p.end));
     if (isToday) { first = Math.min(first, nowMin); last = Math.max(last, nowMin); }
-    const fromHour = Math.max(0, Math.floor(first / 60) - 1);
-    const toHour = Math.min(24, Math.ceil(last / 60) + 1);
-    const PPM = compact() ? 1.05 : 1.15;
-    // A block is never shorter than a comfortable tap target.
-    const MIN_PX = 34;
+    // The column starts with the first routine and ends with the last (or now):
+    // their times are on the rail, so no empty lead-in is needed.
+    const from = Math.max(0, first);
+    const to = Math.min(1440, last);
 
-    // Overlap clusters, then greedy columns within each cluster.
-    const visualEnd = (b) => b.start + Math.max(b.end - b.start, MIN_PX / PPM);
-    const clusters = [];
-    for (const block of timed) {
-      const current = clusters[clusters.length - 1];
-      if (current && block.start < current.end) {
-        current.blocks.push(block);
-        current.end = Math.max(current.end, visualEnd(block));
-      } else {
-        clusters.push({ blocks: [block], end: visualEnd(block) });
-      }
-    }
-    for (const cluster of clusters) {
-      const columns = [];
-      for (const block of cluster.blocks) {
-        let index = columns.findIndex((end) => end <= block.start);
-        if (index === -1) { index = columns.length; columns.push(0); }
-        columns[index] = visualEnd(block);
-        block.column = index;
-      }
-      for (const block of cluster.blocks) block.columns = columns.length;
-    }
-
-    // Long empty stretches fold into one short band ("10:00–14:00 · free"),
-    // the way a good calendar does, so a day with a busy morning and a busy
-    // evening is not mostly empty grid. An hour is busy if a block (at its
-    // drawn height) or the "now" line falls in it.
-    const busy = new Set();
-    for (const block of timed) {
-      for (let h = Math.floor(block.start / 60); h <= Math.floor((visualEnd(block) - 1) / 60); h += 1) busy.add(h);
-    }
-    if (isToday) busy.add(Math.floor(nowMin / 60));
-
-    const segments = [];
-    for (let hour = fromHour; hour < toHour;) {
-      let end = hour;
-      while (end < toHour && !busy.has(end)) end += 1;
-      if (end - hour >= 2) {
-        segments.push({ from: hour, to: end, folded: true });
-        hour = end;
-      } else {
-        segments.push({ from: hour, to: hour + 1, folded: false });
-        hour += 1;
-      }
-    }
-    const FOLD_PX = 30;
-    // Minutes since midnight → pixels from the grid's top, across the folds.
-    const y = (minute) => {
-      let offset = 0;
-      for (const segment of segments) {
-        const start = segment.from * 60;
-        const end = segment.to * 60;
-        if (minute < end || segment === segments[segments.length - 1]) {
-          return offset + (segment.folded ? 0 : (Math.max(minute, start) - start) * PPM);
-        }
-        offset += segment.folded ? FOLD_PX : (end - start) * PPM;
-      }
-      return offset;
-    };
-    gridY = y;
-    const total = segments.reduce((sum, s) => sum + (s.folded ? FOLD_PX : (s.to - s.from) * 60 * PPM), 0);
-    const hh = (hour) => `${String(hour % 24).padStart(2, '0')}:00`;
-
-    const rows = segments.map((segment) => (segment.folded
-      ? el('div', { class: 'hours__row hours__row--fold', style: { top: `${y(segment.from * 60)}px`, height: `${FOLD_PX}px` } },
-          el('span', { class: 'hours__label' }, hh(segment.from)),
-          el('span', { class: 'hours__fold' }, `${hh(segment.from)}–${hh(segment.to)} · ${t('today.free')}`))
-      : el('div', { class: 'hours__row', style: { top: `${y(segment.from * 60)}px` } },
-          el('span', { class: 'hours__label' }, hh(segment.from)))));
-
-    const blocks = timed.map((block) => {
-      const top = y(block.start);
-      const height = Math.max((block.end - block.start) * PPM, MIN_PX) - 3;
-      const width = 100 / block.columns;
-      return hourBlock(block.item, {
-        top: `${top + 1}px`,
-        height: `${height}px`,
-        left: `calc(${block.column * width}% + 2px)`,
-        width: `calc(${width}% - 4px)`,
-      }, height < 46);
+    const MIN_PX = 46;     // room for a name and a time range, and a thumb
+    const MAX_PX = 240;    // a six-hour school day need not fill three screens
+    const { segments, y, height } = layoutColumn(pieces, {
+      from, to, ppm: compact() ? 1.3 : 1.4, minPx: MIN_PX, foldMin: 120, foldPx: 32,
     });
+    // A long piece is capped after the layout: everything below moves up.
+    // PAD keeps the first and last rail labels clear of the grid's edges.
+    const PAD = 14;
+    let lift = 0;
+    for (const s of segments) {
+      s.top = s.top - lift + PAD;
+      if (s.piece && s.height > MAX_PX) { lift += s.height - MAX_PX; s.height = MAX_PX; }
+    }
+    const total = height - lift + PAD * 2;
+    const yAt = (minute) => {
+      const s = segments.find((seg) => minute < seg.b) || segments[segments.length - 1];
+      if (!s) return 0;
+      if (minute <= s.a) return s.top;
+      return s.top + Math.min(1, (minute - s.a) / Math.max(1, s.b - s.a)) * s.height;
+    };
+    gridY = yAt;
+
+    // The rail: each block's start, its end where nothing follows at once,
+    // whole hours in the open stretches — never two labels on top of each other.
+    const marks = [];
+    segments.forEach((s, index) => {
+      if (s.piece) {
+        marks.push({ top: s.top, text: clock(s.piece.start), kind: 'edge' });
+        const next = segments[index + 1];
+        if (!next || !next.piece || next.piece.start !== s.piece.end) {
+          marks.push({ top: s.top + s.height, text: clock(s.piece.end), kind: 'edge' });
+        }
+      } else if (!s.folded) {
+        for (let h = Math.ceil((s.a + 1) / 60) * 60; h < s.b; h += 60) {
+          marks.push({ top: s.top + ((h - s.a) / (s.b - s.a)) * s.height, text: clock(h), kind: 'hour' });
+        }
+      }
+    });
+    marks.sort((a, b) => a.top - b.top || (a.kind === 'edge' ? -1 : 1));
+    // A block's own times win over a round hour that would crowd them.
+    const rail = [];
+    for (const mark of marks) {
+      const previous = rail[rail.length - 1];
+      if (!previous || mark.top - previous.top >= 15) rail.push(mark);
+      else if (mark.kind === 'edge' && previous.kind === 'hour') rail[rail.length - 1] = mark;
+    }
+
+    const rows = [
+      ...segments.filter((s) => s.folded).map((s) => el('div', {
+        class: 'hours__row hours__row--fold', style: { top: `${s.top}px`, height: `${s.height}px` },
+      }, el('span', { class: 'hours__fold' }, `${clock(s.a)}–${clock(s.b)} · ${t('today.free')}`))),
+      ...rail.map((mark) => el('div', { class: ['hours__mark', `is-${mark.kind}`], style: { top: `${mark.top}px` } },
+        el('span', { class: 'hours__label' }, mark.text))),
+    ];
+
+    const blocks = segments.filter((s) => s.piece).map((s) => hourBlock(byId.get(s.piece.id), s.piece, {
+      top: `${s.top + 2}px`,
+      height: `${s.height - 4}px`,
+    }, s.height < 60));
 
     return el('div', null,
       anytime.length
@@ -781,10 +765,10 @@ export function renderToday(container, { date, navigate }) {
             el('div', { class: 'anytime__label' }, t('part.anytime')),
             ...anytime.map(routineRow))
         : null,
-      el('div', { class: 'hours', style: { height: `${total}px`, '--ppm': `${PPM}px` } },
+      el('div', { class: 'hours', style: { height: `${total}px` } },
         ...rows,
         el('div', { class: 'hours__lane' }, ...blocks),
-        isToday ? hoursNow() : null,
+        isToday && nowMin >= from && nowMin <= to ? hoursNow() : null,
       ),
     );
   };
@@ -795,19 +779,27 @@ export function renderToday(container, { date, navigate }) {
     return el('div', { class: 'hours__now', style: { top: `${gridY(toMinutes(now))}px` } }, el('span', null, now));
   };
 
-  /** One routine in the grid. Its check works in place; the rest opens a menu. */
-  const hourBlock = (item, position, short) => {
+  /**
+   * One piece of a routine in the grid. It always states the routine's real
+   * start and end; a routine split around a shorter one says which part this
+   * is, and a later part reads "continued". Its check works in place; the
+   * rest opens a menu.
+   */
+  const hourBlock = (item, piece, position, short) => {
     const isDone = item.status === 'done';
     const isSkipped = item.status === 'skipped';
     const end = item.duration_min ? clock(toMinutes(item.start_time) + item.duration_min) : null;
+    const range = end ? `${item.start_time}–${end}` : item.start_time;
+    const continued = piece.parts > 1 && piece.part > 1;
 
     return el('div', {
-      class: ['tl-block', isDone && 'is-done', isSkipped && 'is-skipped', short && 'is-short', item.id === freshId && 'is-fresh'],
+      class: ['tl-block', isDone && 'is-done', isSkipped && 'is-skipped', short && 'is-short',
+        continued && 'is-continued', piece.marker && 'is-marker', item.id === freshId && 'is-fresh'],
       style: { ...position, '--routine-color': item.color },
       dataset: { routine: String(item.id) },
       role: 'button',
       tabindex: '0',
-      'aria-label': `${item.title}, ${item.start_time}${end ? `–${end}` : ''}`,
+      'aria-label': `${item.title}, ${range}${piece.parts > 1 ? ` (${piece.part}/${piece.parts})` : ''}`,
       onclick: () => blockMenu(item),
       onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); blockMenu(item); } },
     },
@@ -819,8 +811,14 @@ export function renderToday(container, { date, navigate }) {
         onclick: (e) => { e.stopPropagation(); setStatus(item, isDone ? 'pending' : 'done'); },
       }, icon(isSkipped ? 'x' : 'check', { size: 12, stroke: 3.2 })),
       el('div', { class: 'tl-block__body' },
-        el('div', { class: 'tl-block__title' }, `${item.icon} ${item.title}`),
-        el('div', { class: 'tl-block__time' }, end ? `${item.start_time}–${end}` : item.start_time),
+        el('div', { class: 'tl-block__title' },
+          el('span', { class: 'tl-block__name' }, `${item.icon} ${item.title}`),
+          piece.parts > 1 ? el('span', { class: 'tl-block__part num' }, `${piece.part}/${piece.parts}`) : null,
+        ),
+        el('div', { class: 'tl-block__time' },
+          continued ? `${t('today.continued')} · ` : '',
+          el('span', { class: 'num' }, range),
+        ),
       ),
     );
   };
