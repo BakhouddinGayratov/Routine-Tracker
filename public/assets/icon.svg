@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" color="#f2ece1">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" color="#c63d22">
   <!-- The tile only shows where this file is the favicon. Pages that <use>
        #mark get just the dial, drawn in currentColor, so it takes the theme. -->
-  <rect width="48" height="48" rx="11" fill="#1e1a14"/>
+  <rect width="48" height="48" rx="11" fill="#f2ece1"/>
   <g id="mark" fill="none" stroke="currentColor" stroke-linecap="round">
     <!-- A day as a dial: the faint ring is the 24 hours, the bold arc the part
          already lived well, the hand where you are now. -->

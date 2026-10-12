@@ -5,7 +5,7 @@
  *
  * Installable web apps need raster icons: Android builds its home-screen app
  * from 192px and 512px PNGs, and iOS ignores an SVG apple-touch-icon. The
- * shape is simple enough — an ink tile with the day dial on it: a faint ring,
+ * shape is simple enough — a paper tile with the day dial on it: a faint ring,
  * a bold red arc, a hand and a hub — to rasterise here with node:zlib instead
  * of adding an image library.
  *
@@ -20,9 +20,11 @@ const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'pu
 
 // icon.svg, in its 48×48 viewBox.
 const RECT = { x: 0, y: 0, size: 48, radius: 11 };
-const INK = [0x1e, 0x1a, 0x14];        // the tile
-const PAPER = [0xf2, 0xec, 0xe1];      // ring, hand, hub
-const PENCIL = [0xd2, 0x4a, 0x2c];     // the arc — the paper theme's red pencil, a touch brighter on ink
+// The same look as the mark inside the app on the paper theme: a red-pencil
+// dial on warm paper. (The first version put it on a dark ink tile, which did
+// not match the app it opens.)
+const TILE = [0xf2, 0xec, 0xe1];       // paper
+const PENCIL = [0xc6, 0x3d, 0x22];     // the paper theme's accent: arc, hand, hub, and the faint ring
 const DIAL = { cx: 24, cy: 24, r: 15, ring: 3, arc: 3.8, arcTo: 120 };   // arc from 12 o'clock, clockwise, in degrees
 const HAND = { points: [[24, 24], [31.8, 28.5]], width: 3 };
 const HUB = 2.6;
@@ -35,8 +37,8 @@ function dialColor(x, y) {
   const dx = x - DIAL.cx;
   const dy = y - DIAL.cy;
   const d = Math.hypot(dx, dy);
-  if (d <= HUB) return PAPER;
-  if (onCheck(x, y, { points: HAND.points, width: HAND.width })) return PAPER;
+  if (d <= HUB) return PENCIL;
+  if (onCheck(x, y, { points: HAND.points, width: HAND.width })) return PENCIL;
 
   // Angle from 12 o'clock, clockwise, 0–360.
   const angle = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360;
@@ -44,7 +46,7 @@ function dialColor(x, y) {
   const end = [DIAL.cx + DIAL.r * Math.sin(DIAL.arcTo * Math.PI / 180), DIAL.cy - DIAL.r * Math.cos(DIAL.arcTo * Math.PI / 180)];
   const onCap = Math.hypot(x - DIAL.cx, y - (DIAL.cy - DIAL.r)) <= DIAL.arc / 2 || Math.hypot(x - end[0], y - end[1]) <= DIAL.arc / 2;
   if (onArcBand || onCap) return PENCIL;
-  if (Math.abs(d - DIAL.r) <= DIAL.ring / 2) return mix(INK, PAPER, 0.3);
+  if (Math.abs(d - DIAL.r) <= DIAL.ring / 2) return mix(TILE, PENCIL, 0.3);   // as the SVG's opacity 0.3
   return null;
 }
 
@@ -75,7 +77,7 @@ function onCheck(x, y, check) {
  */
 function render(size, maskable = false) {
   const rgba = Buffer.alloc(size * size * 4);
-  // Maskable: the mark shrinks to the safe zone and the ink fills the square.
+  // Maskable: the mark shrinks to the safe zone and the paper fills the square.
   const scale = maskable ? 0.8 : 1;
   const offset = (48 - 48 * scale) / 2;
 
@@ -89,7 +91,7 @@ function render(size, maskable = false) {
           const mx = (x - offset) / scale;
           const my = (y - offset) / scale;
           let color = null;
-          if (maskable || insideRoundedRect(x, y, RECT)) color = INK;
+          if (maskable || insideRoundedRect(x, y, RECT)) color = TILE;
           if (color) color = dialColor(mx, my) || color;
           if (color) { r += color[0]; g += color[1]; b += color[2]; a += 255; }
         }
