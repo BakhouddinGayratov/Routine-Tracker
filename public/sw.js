@@ -15,7 +15,7 @@
  * for the capacitor:// scheme.
  */
 
-const CACHE = 'rt-shell-v3';   // bump to drop every cached file on the next visit
+const CACHE = 'rt-shell-v4';   // bump to drop every cached file on the next visit
 const SHELL = '/index.html';
 // The app's own code: always asked for fresh while online.
 const CODE = /^\/(app|styles)\/|^\/manifest\.webmanifest$/;
@@ -114,8 +114,8 @@ self.addEventListener('push', (event) => {
     // Same tag as the in-tab reminder, so an open tab and a push for the same
     // routine replace each other instead of doubling up.
     tag: message.tag,
-    icon: '/assets/icon-192.png',
-    badge: '/assets/icon-192.png',
+    icon: '/assets/icon-192.png?v=2',
+    badge: '/assets/icon-192.png?v=2',
     data: { url: message.url || '/today' },
   }));
 });

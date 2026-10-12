@@ -120,16 +120,14 @@ export function renderCalendar(container, { navigate }) {
       : null;
 
     mount(statsSlot, el('div', { class: 'grid grid--4', style: { 'margin-top': 'var(--s-6)' } },
-      tile(t('stats.completion'), `${pct((done / due) * 100)}%`, `${Math.round(done)} / ${due}`, '#818cf8'),
-      tile(t('stats.perfectDays'), String(perfect), `${t('misc.of')} ${tracked.length}`, '#22c55e'),
-      tile(t('stats.activeRoutines'), String(Math.max(...tracked.map((d) => d.due))), t('stats.days', { count: tracked.length }), '#f59e0b'),
-      tile(t('journal.mood'), avgMood === null ? '—' : `${avgMood}/5`, `${moods.length} ${t('journal.past').toLowerCase()}`, '#a855f7'),
+      tile(t('stats.completion'), `${pct((done / due) * 100)}%`, `${Math.round(done)} / ${due}`),
+      tile(t('stats.perfectDays'), String(perfect), `${t('misc.of')} ${tracked.length}`),
+      tile(t('stats.activeRoutines'), String(Math.max(...tracked.map((d) => d.due))), t('stats.days', { count: tracked.length })),
+      tile(t('journal.mood'), avgMood === null ? '—' : `${avgMood}/5`, `${moods.length} ${t('journal.past').toLowerCase()}`),
     ));
   };
 
-  const tile = (label, value, foot, accent) => el('div', {
-    class: 'kpi', style: { '--kpi-accent': accent },
-  },
+  const tile = (label, value, foot) => el('div', { class: 'kpi' },
     el('div', { class: 'kpi__label' }, label),
     el('div', { class: 'kpi__value' }, value),
     el('div', { class: 'kpi__foot' }, foot),

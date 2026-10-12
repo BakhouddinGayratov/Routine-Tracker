@@ -79,8 +79,8 @@ function tick() {
         ? t('reminders.soon', { time: item.start_time, count: item.reminder_min })
         : t('reminders.now', { time: item.start_time }),
       tag: `routine-${item.id}-${date}`,
-      icon: '/assets/icon-192.png',
-      badge: '/assets/icon-192.png',
+      icon: '/assets/icon-192.png?v=2',
+      badge: '/assets/icon-192.png?v=2',
       data: { url: '/today' },
     });
   }

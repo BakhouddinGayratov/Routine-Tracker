@@ -96,17 +96,21 @@ app.use('/api', requireAuth, miscRouter);
 // CSS, the manifest and sw.js — must be revalidated on every load ("no-cache"
 // still caches; it only asks first, and an unchanged file costs a 304). The
 // old one-hour max-age meant a deploy reached phones up to an hour late, and
-// then only on the second open. Fonts and images never change in place, so
-// they may be kept.
-const LONG_LIVED = /\.(woff2|png|svg|ico)$/;
+// then only on the second open. Fonts never change in place and are kept for
+// a month. Images are kept for a day only: the app icon was redrawn under the
+// same file name and a month-long cache kept the old one on screen — icon
+// links now carry a ?v= version too, bumped whenever an icon changes.
+const FONTS = /\.woff2$/;
+const IMAGES = /\.(png|svg|ico)$/;
 
 app.use(express.static(config.publicDir, {
   index: 'index.html',
   etag: true,
   setHeaders(res, filePath) {
-    res.setHeader('Cache-Control', config.isProd && LONG_LIVED.test(filePath)
-      ? 'public, max-age=2592000'
-      : 'no-cache');
+    let policy = 'no-cache';
+    if (config.isProd && FONTS.test(filePath)) policy = 'public, max-age=2592000, immutable';
+    else if (config.isProd && IMAGES.test(filePath)) policy = 'public, max-age=86400';
+    res.setHeader('Cache-Control', policy);
   },
 }));
 
